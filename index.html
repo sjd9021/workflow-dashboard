@@ -267,6 +267,34 @@
             transform: translateY(-1px);
             box-shadow: 0 4px 12px rgba(231, 76, 60, 0.3);
         }
+        .retry-config {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 15px;
+            padding: 12px;
+            background: #2a2a2a;
+            border-radius: 6px;
+        }
+        .retry-config label {
+            font-size: 13px;
+            color: #aaa;
+            white-space: nowrap;
+        }
+        .retry-input {
+            flex: 1;
+            padding: 8px 12px;
+            border: 1px solid #444;
+            border-radius: 4px;
+            background: #1a1a1a;
+            color: #fff;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 13px;
+        }
+        .retry-input:focus {
+            outline: none;
+            border-color: #3498db;
+        }
         .run-history {
             display: none;
             padding: 10px 15px;
@@ -482,6 +510,10 @@
                 <button class="modal-close" onclick="closeRetryModal()">&times;</button>
             </div>
             <div class="modal-body">
+                <div class="retry-config">
+                    <label for="connectionIdInput">Connection ID:</label>
+                    <input type="text" id="connectionIdInput" class="retry-input" placeholder="ca_xxxxx" onchange="updateRetryConnectionId(this.value)">
+                </div>
                 <div id="scriptOutput" class="script-output"></div>
             </div>
             <div class="modal-footer">
@@ -887,6 +919,7 @@
         async function showRetryModal(appName, workflowId, linearTicket, connectionId, environment, runNumber) {
             document.getElementById('modalAppName').textContent = appName;
             document.getElementById('scriptOutput').innerHTML = '<div class="loading">Loading failed actions...</div>';
+            document.getElementById('connectionIdInput').value = connectionId || '';
             document.getElementById('retryModal').classList.add('active');
 
             currentRetryData = { app_name: appName, workflow_id: workflowId, linear_ticket: linearTicket, connection_id: connectionId, environment, run_number: runNumber };
@@ -906,19 +939,31 @@
             }
 
             currentRetryData.failed_actions = failedActions;
+            updateScriptOutput();
+        }
+
+        function updateRetryConnectionId(newConnectionId) {
+            currentRetryData.connection_id = newConnectionId;
+            updateScriptOutput();
+        }
+
+        function updateScriptOutput() {
+            const { app_name, workflow_id, linear_ticket, connection_id, environment, failed_actions } = currentRetryData;
+
+            if (!failed_actions?.length) return;
 
             const payload = {
                 model_provider: 'claude',
                 force_run: true,
                 timeout_hours: 36,
-                previous_workflow_id: workflowId,
-                linear_issue_link: linearTicket ? `https://linear.app/composio/issue/${linearTicket}` : '',
+                previous_workflow_id: workflow_id,
+                linear_issue_link: linear_ticket ? `https://linear.app/composio/issue/${linear_ticket}` : '',
                 env: environment,
                 integrator_branch: 'next',
-                app_name: appName,
+                app_name: app_name,
                 base_branch: 'master',
-                connection_id: connectionId,
-                action_names: failedActions,
+                connection_id: connection_id,
+                action_names: failed_actions,
                 test_instruction: "Test thoroughly and ensure: (1) tool/parameter descriptions are clear and accurate, not sloppy or vague, (2) correct API endpoints are used, (3) response schemas are complete and useful, (4) the tool is well-built for agent use with sensible defaults."
             };
 
