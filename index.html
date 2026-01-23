@@ -945,7 +945,7 @@
             btn.textContent = 'Executing...';
 
             try {
-                const response = await fetch('/api/retry', {
+                const response = await fetch('/api/retry.js', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(currentRetryData)
@@ -1003,7 +1003,7 @@
         // Load config and initialize
         async function init() {
             try {
-                const configResp = await fetch('/api/config');
+                const configResp = await fetch('/api/config.js');
                 const config = await configResp.json();
                 SUPABASE_URL = config.supabaseUrl;
                 SUPABASE_ANON_KEY = config.supabaseAnonKey;
