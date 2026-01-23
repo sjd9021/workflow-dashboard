@@ -1,0 +1,1034 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Workflow Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: #1a1a2e;
+            color: #eee;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid #333;
+        }
+        .header h1 {
+            font-size: 24px;
+            color: #fff;
+        }
+        .header-meta {
+            font-size: 14px;
+            color: #888;
+        }
+        .refresh-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            background: #28a745;
+            border-radius: 50%;
+            margin-right: 8px;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .stats {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
+        .stat-card {
+            background: #16213e;
+            padding: 20px;
+            border-radius: 8px;
+            min-width: 150px;
+        }
+        .stat-card .number {
+            font-size: 36px;
+            font-weight: bold;
+        }
+        .stat-card .label {
+            font-size: 14px;
+            color: #888;
+            margin-top: 5px;
+        }
+        .stat-card.active .number { color: #ffc107; }
+        .stat-card.completed .number { color: #28a745; }
+        .stat-card.queued .number { color: #17a2b8; }
+        .stat-card.actions .number { color: #9b59b6; }
+        .useful-links {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
+        .useful-link {
+            background: #16213e;
+            padding: 10px 20px;
+            border-radius: 8px;
+            color: #17a2b8;
+            text-decoration: none;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+        .useful-link:hover {
+            background: #1a2744;
+            color: #fff;
+        }
+        .search-container {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .search-container input, .search-container select {
+            padding: 12px 15px;
+            border-radius: 8px;
+            border: 1px solid #333;
+            background: #16213e;
+            color: #fff;
+            font-size: 14px;
+        }
+        .search-container input {
+            flex: 1;
+            min-width: 300px;
+            max-width: 500px;
+        }
+        .search-container select {
+            cursor: pointer;
+        }
+        .queue-config {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .queue-config input {
+            width: 50px;
+            padding: 5px;
+        }
+        .queue-config button {
+            padding: 5px 12px;
+            border-radius: 4px;
+            border: none;
+            background: #28a745;
+            color: #fff;
+            cursor: pointer;
+            font-size: 13px;
+        }
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .tab {
+            padding: 10px 20px;
+            background: #16213e;
+            border: none;
+            border-radius: 8px;
+            color: #888;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+        .tab:hover {
+            background: #1a2744;
+        }
+        .tab.active {
+            background: #0e4429;
+            color: #fff;
+        }
+        .tab-content {
+            display: none;
+            max-height: calc(100vh - 350px);
+            overflow-y: auto;
+            padding-right: 10px;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        .runs-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+            gap: 15px;
+        }
+        .run-card {
+            background: #16213e;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .run-header {
+            padding: 15px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .run-header:hover {
+            background: #1a2744;
+        }
+        .run-title {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .app-name {
+            font-size: 18px;
+            font-weight: 600;
+        }
+        .status-badge {
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 500;
+            color: #000;
+        }
+        .run-meta {
+            display: flex;
+            gap: 15px;
+            font-size: 13px;
+            color: #888;
+            flex-wrap: wrap;
+        }
+        .run-meta a {
+            color: #17a2b8;
+            text-decoration: none;
+        }
+        .run-meta a:hover {
+            text-decoration: underline;
+        }
+        .run-summary {
+            padding: 10px 15px;
+            border-top: 1px solid #333;
+        }
+        .progress-bar {
+            height: 6px;
+            background: #333;
+            border-radius: 3px;
+            overflow: hidden;
+            margin-bottom: 8px;
+        }
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #28a745, #20c997);
+            border-radius: 3px;
+            transition: width 0.3s ease;
+        }
+        .summary-stats {
+            display: flex;
+            gap: 15px;
+            font-size: 12px;
+        }
+        .summary-stats .stat { color: #888; }
+        .summary-stats .stat.passed { color: #28a745; }
+        .summary-stats .stat.failed { color: #dc3545; }
+        .retry-section {
+            padding: 12px 15px;
+            border-top: 1px solid #333;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .retry-info {
+            font-size: 13px;
+            color: #dc3545;
+        }
+        .retry-btn {
+            background: linear-gradient(135deg, #e74c3c, #c0392b);
+            color: #fff;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .retry-btn:hover {
+            background: linear-gradient(135deg, #c0392b, #a93226);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(231, 76, 60, 0.3);
+        }
+        .run-history {
+            display: none;
+            padding: 10px 15px;
+            background: #1a1a2e;
+            border-top: 1px solid #333;
+        }
+        .history-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 5px 0;
+            border-bottom: 1px solid #333;
+            font-size: 12px;
+        }
+        .history-row:last-child {
+            border-bottom: none;
+        }
+        .empty-state {
+            padding: 40px;
+            text-align: center;
+            color: #666;
+            background: #16213e;
+            border-radius: 8px;
+        }
+        .ua-link {
+            color: #ff6b6b !important;
+            font-weight: 500;
+            background: rgba(255, 107, 107, 0.1);
+            padding: 2px 8px;
+            border-radius: 4px;
+        }
+        .pr-link {
+            color: #28a745 !important;
+            font-weight: 500;
+        }
+        /* Modal styles */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-overlay.active {
+            display: flex;
+        }
+        .modal {
+            background: #1a1a2e;
+            border-radius: 12px;
+            max-width: 900px;
+            width: 90%;
+            max-height: 80vh;
+            overflow: hidden;
+            border: 1px solid #333;
+        }
+        .modal-header {
+            padding: 20px;
+            border-bottom: 1px solid #333;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .modal-header h2 {
+            color: #fff;
+            font-size: 18px;
+        }
+        .modal-close {
+            background: none;
+            border: none;
+            color: #888;
+            font-size: 24px;
+            cursor: pointer;
+        }
+        .modal-body {
+            padding: 20px;
+            max-height: 60vh;
+            overflow-y: auto;
+        }
+        .script-output {
+            background: #0f0f1a;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+            word-break: break-all;
+            color: #00ff00;
+        }
+        .modal-footer {
+            padding: 15px 20px;
+            border-top: 1px solid #333;
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+        .modal-btn {
+            padding: 10px 20px;
+            border-radius: 6px;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        .modal-btn.primary {
+            background: #28a745;
+            color: #fff;
+        }
+        .modal-btn.secondary {
+            background: #6c757d;
+            color: #fff;
+        }
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #888;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Test-and-Fix Workflow Dashboard</h1>
+        <div class="header-meta">
+            <span class="refresh-indicator"></span>
+            Auto-refreshes every 10s | Last updated: <span id="lastUpdated">Loading...</span>
+        </div>
+    </div>
+
+    <div class="stats">
+        <div class="stat-card active">
+            <div class="number" id="activeCount">-</div>
+            <div class="label">Active Workflows</div>
+        </div>
+        <div class="stat-card queued">
+            <div class="number" id="pendingCount">-</div>
+            <div class="label">Pending</div>
+        </div>
+        <div class="stat-card completed">
+            <div class="number" id="completedCount">-</div>
+            <div class="label">Completed</div>
+        </div>
+        <div class="stat-card actions">
+            <div class="number"><span id="passedCount">-</span>/<span id="totalCount">-</span></div>
+            <div class="label">Actions Passed</div>
+        </div>
+    </div>
+
+    <div class="useful-links">
+        <a href="https://linear.app/composio/team/PAR/active" target="_blank" class="useful-link">Linear Partnerships</a>
+        <a href="https://github.com/ComposioHQ/composio/pulls?q=is%3Apr+is%3Aopen+cortex%2Ffix" target="_blank" class="useful-link">Open PRs (cortex/fix)</a>
+        <a href="https://docs.google.com/spreadsheets/d/1SxDwzMqpS8y-5we-kvzcaTDvWwHacU5QbPT0FIvTM9U/edit?gid=847538700" target="_blank" class="useful-link">Connections Sheet</a>
+        <a href="https://integrations-api.composio.io/docs" target="_blank" class="useful-link">Workflow API Docs</a>
+        <div class="queue-config">
+            <span style="color:#888;font-size:14px;">Max concurrent:</span>
+            <input type="number" id="maxConcurrent" value="12" min="1" max="20">
+            <button onclick="updateMaxConcurrent()">Update</button>
+        </div>
+    </div>
+
+    <div class="search-container">
+        <input type="text" id="searchInput" placeholder="Search by app name, workflow ID, or ticket... (Press / to focus)" oninput="applyFilters()">
+        <select id="statusFilter" onchange="applyFilters()">
+            <option value="all">All Statuses</option>
+            <option value="success">Success Only</option>
+            <option value="failed">Failed Only</option>
+            <option value="auth_issue">Auth Issues</option>
+            <option value="has_failures">Has Failed Actions</option>
+            <option value="perfect">100% Pass Rate</option>
+        </select>
+        <select id="sortFilter" onchange="applyFilters()">
+            <option value="time_desc" selected>Most Recent</option>
+            <option value="time_asc">Oldest First</option>
+            <option value="passed_desc">Most Passed</option>
+            <option value="passed_asc">Least Passed</option>
+            <option value="rate_desc">Best Pass Rate</option>
+            <option value="rate_asc">Worst Pass Rate</option>
+        </select>
+        <span id="searchCount" style="color: #888; font-size: 14px;"></span>
+    </div>
+
+    <div class="tabs">
+        <button class="tab active" data-tab="active" onclick="showTab('active')">Active (<span id="activeTabCount">0</span>)</button>
+        <button class="tab" data-tab="pending" onclick="showTab('pending')">Pending (<span id="pendingTabCount">0</span>)</button>
+        <button class="tab" data-tab="completed" onclick="showTab('completed')">Completed (<span id="completedTabCount">0</span>)</button>
+    </div>
+
+    <div id="active" class="tab-content active">
+        <div class="runs-grid" id="activeGrid">
+            <div class="loading">Loading...</div>
+        </div>
+    </div>
+
+    <div id="pending" class="tab-content">
+        <div class="runs-grid" id="pendingGrid">
+            <div class="loading">Loading...</div>
+        </div>
+    </div>
+
+    <div id="completed" class="tab-content">
+        <div class="runs-grid" id="completedGrid">
+            <div class="loading">Loading...</div>
+        </div>
+    </div>
+
+    <!-- Retry Modal -->
+    <div id="retryModal" class="modal-overlay">
+        <div class="modal">
+            <div class="modal-header">
+                <h2>Retry Failed Actions - <span id="modalAppName"></span></h2>
+                <button class="modal-close" onclick="closeRetryModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="scriptOutput" class="script-output"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="modal-btn secondary" onclick="closeRetryModal()">Close</button>
+                <button class="modal-btn secondary" onclick="copyScript()">Copy Script</button>
+                <button id="executeBtn" class="modal-btn primary" onclick="executeRetry()">Execute & Track</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Supabase configuration - loaded from /api/config endpoint
+        let SUPABASE_URL = null;
+        let SUPABASE_ANON_KEY = null;
+        const INTEGRATOR_API_URL = 'https://integrations-api.composio.io';
+
+        // Supabase client - initialized after config loads
+        let supabaseClient = null;
+
+        let currentTab = window.location.hash.replace('#', '') || 'active';
+        let currentRetryData = {};
+        let allWorkflows = { active: [], completed: [], pending: [] };
+
+        // Format timestamp
+        function formatTime(ts) {
+            if (!ts) return 'N/A';
+            try {
+                const dt = new Date(ts);
+                return dt.toISOString().slice(0, 16).replace('T', ' ');
+            } catch {
+                return ts.slice(0, 16);
+            }
+        }
+
+        // Fetch all data from Supabase
+        async function fetchData() {
+            try {
+                // Fetch workflow runs with workflow info
+                const { data: runs, error: runsError } = await supabaseClient
+                    .from('workflow_runs')
+                    .select('*, workflows(app_name, linear_ticket, connection_id, environment)');
+
+                if (runsError) throw runsError;
+
+                // Fetch pending queue
+                const { data: queue, error: queueError } = await supabaseClient
+                    .from('queued_workflows')
+                    .select('*')
+                    .order('position', { ascending: true });
+
+                if (queueError) throw queueError;
+
+                // Fetch config
+                const { data: config } = await supabaseClient
+                    .from('config')
+                    .select('*')
+                    .eq('key', 'max_concurrent')
+                    .single();
+
+                if (config) {
+                    document.getElementById('maxConcurrent').value = config.value || 12;
+                }
+
+                // Group runs by workflow_id
+                const workflows = {};
+                for (const run of runs || []) {
+                    const wfId = run.workflow_id;
+                    if (!workflows[wfId]) workflows[wfId] = [];
+                    workflows[wfId].push(run);
+                }
+
+                // Separate active and completed
+                const active = [];
+                const completed = [];
+                let totalPassed = 0;
+                let totalTested = 0;
+
+                for (const [wfId, wfRuns] of Object.entries(workflows)) {
+                    const sortedRuns = wfRuns.sort((a, b) => (a.run_number || 0) - (b.run_number || 0));
+                    const latestRun = sortedRuns[sortedRuns.length - 1];
+                    const firstRun = sortedRuns[0];
+                    const hasActive = wfRuns.some(r => r.status === 'active');
+
+                    const aggregatedPassed = sortedRuns
+                        .filter(r => r.status === 'completed')
+                        .reduce((sum, r) => sum + (r.passed || 0), 0);
+                    const total = firstRun.total || 0;
+
+                    totalTested += total;
+
+                    const workflow = {
+                        workflow_id: wfId,
+                        workflows: latestRun.workflows || {},
+                        run_number: latestRun.run_number || 1,
+                        runs: sortedRuns,
+                        passed: aggregatedPassed,
+                        total: total,
+                        failed_actions: latestRun.failed_actions || [],
+                        execution_state: latestRun.execution_state || 'PENDING',
+                        pr_number: latestRun.pr_number,
+                        pr_state: latestRun.pr_state || '',
+                        started_at: firstRun.started_at,
+                        completed_at: latestRun.completed_at,
+                        status: hasActive ? 'active' : 'completed'
+                    };
+
+                    if (hasActive) {
+                        active.push(workflow);
+                    } else {
+                        completed.push(workflow);
+                        totalPassed += aggregatedPassed;
+                    }
+                }
+
+                // Sort
+                active.sort((a, b) => (a.started_at || '').localeCompare(b.started_at || ''));
+                completed.sort((a, b) => (b.completed_at || '').localeCompare(a.completed_at || ''));
+
+                allWorkflows = { active, completed, pending: queue || [] };
+
+                // Update stats
+                document.getElementById('activeCount').textContent = active.length;
+                document.getElementById('pendingCount').textContent = queue?.length || 0;
+                document.getElementById('completedCount').textContent = completed.length;
+                document.getElementById('passedCount').textContent = totalPassed;
+                document.getElementById('totalCount').textContent = totalTested;
+                document.getElementById('activeTabCount').textContent = active.length;
+                document.getElementById('pendingTabCount').textContent = queue?.length || 0;
+                document.getElementById('completedTabCount').textContent = completed.length;
+                document.getElementById('lastUpdated').textContent = new Date().toISOString().slice(0, 19).replace('T', ' ') + ' UTC';
+
+                // Render cards
+                renderCards();
+
+            } catch (error) {
+                console.error('Error fetching data:', error);
+            }
+        }
+
+        function generateWorkflowCard(workflow, isActive) {
+            const wf = workflow.workflows || {};
+            const appName = wf.app_name || 'unknown';
+            const linearTicket = wf.linear_ticket || '';
+            const workflowId = workflow.workflow_id || '';
+            const connectionId = wf.connection_id || '';
+            const environment = wf.environment || 'production';
+
+            const passed = workflow.passed || 0;
+            const total = workflow.total || 0;
+            const failedCount = Math.max(0, total - passed);
+            const executionState = workflow.execution_state || 'PENDING';
+            const prNumber = workflow.pr_number;
+            const prState = workflow.pr_state || '';
+            const runNumber = workflow.run_number || 1;
+            const started = formatTime(workflow.started_at);
+            const runs = workflow.runs || [];
+            const completedAt = workflow.completed_at || workflow.started_at || '';
+
+            const failureStates = ['FAILED', 'FAILED_AUTH_ISSUE', 'INFRA_EXECUTION_FAILED', 'INFRA_INITIATION_FAILED', 'TIMED_OUT', 'ABORTED'];
+            let badgeColor, statusText;
+
+            if (isActive) {
+                badgeColor = '#ffc107';
+                statusText = executionState;
+            } else if (failureStates.includes(executionState.toUpperCase())) {
+                badgeColor = '#dc3545';
+                statusText = executionState;
+            } else if (failedCount > 0) {
+                badgeColor = '#dc3545';
+                statusText = `${failedCount} FAILED`;
+            } else {
+                badgeColor = '#28a745';
+                statusText = 'SUCCESS';
+            }
+
+            const progress = total > 0 ? (passed / total * 100) : 0;
+
+            const ticketHtml = linearTicket && linearTicket !== 'N/A'
+                ? `<a href="https://linear.app/composio/issue/${linearTicket}" target="_blank">[${linearTicket}]</a>`
+                : '';
+
+            const prHtml = prNumber
+                ? `<a href="https://github.com/ComposioHQ/composio/pull/${prNumber}" target="_blank" class="pr-link">PR #${prNumber}</a> (${prState})`
+                : '';
+
+            const logsLink = workflowId
+                ? `<a href="https://usefulagents.com/workflows/${workflowId}?run=${runNumber}" target="_blank" class="ua-link">View Logs</a>`
+                : '';
+
+            const retryHtml = !isActive && failedCount > 0
+                ? `<div class="retry-section">
+                    <span class="retry-info">${failedCount} failed actions</span>
+                    <button class="retry-btn" onclick="showRetryModal('${appName}', '${workflowId}', '${linearTicket}', '${connectionId}', '${environment}', ${runNumber})">
+                        <span>Retry Failed</span>
+                    </button>
+                </div>`
+                : '';
+
+            let historyHtml = '';
+            if (runs.length > 0) {
+                const historyRows = runs
+                    .sort((a, b) => (b.run_number || 0) - (a.run_number || 0))
+                    .map(r => {
+                        const rNum = r.run_number || 1;
+                        const rPassed = r.passed || 0;
+                        const rTotal = r.total || 0;
+                        const rDate = formatTime(r.started_at);
+                        const retryBadge = rNum > 1 ? '<span style="background:#e67e22;color:white;padding:2px 6px;border-radius:3px;font-size:10px;margin-left:5px">Retry</span>' : '';
+                        return `<div class="history-row">
+                            <span>Run ${rNum}${retryBadge}</span>
+                            <span>${rPassed}/${rTotal}</span>
+                            <span>${rDate}</span>
+                            <a href="https://usefulagents.com/workflows/${workflowId}?run=${rNum}" target="_blank" style="color:#4fc3f7">Logs</a>
+                        </div>`;
+                    }).join('');
+
+                historyHtml = `<div class="run-history" id="history-${workflowId}">
+                    <div style="font-weight:bold;margin-bottom:10px">Run History (${runs.length} runs)</div>
+                    ${historyRows}
+                </div>`;
+            }
+
+            return `<div class="run-card" data-completed="${completedAt}" data-passed="${passed}" data-total="${total}" data-app="${appName.toLowerCase()}" data-workflow="${workflowId.toLowerCase()}" data-ticket="${linearTicket.toLowerCase()}" data-state="${executionState.toLowerCase()}" data-failed="${failedCount}">
+                <div class="run-header" onclick="toggleHistory('${workflowId}')">
+                    <div class="run-title">
+                        <span class="app-name">${appName}</span>
+                        <span class="status-badge" style="background:${badgeColor}">${statusText}</span>
+                        ${runs.length > 1 ? `<span style="font-size:11px;color:#888;margin-left:10px">${runs.length} runs</span>` : ''}
+                    </div>
+                    <div class="run-meta">
+                        ${ticketHtml}
+                        <span style="font-family:monospace;font-size:11px;color:#888" title="Workflow ID">${workflowId}</span>
+                        <span>Run #${runNumber}</span>
+                        <span>Started: ${started}</span>
+                        ${prHtml}
+                        ${logsLink}
+                    </div>
+                </div>
+                <div class="run-summary">
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width:${progress.toFixed(1)}%"></div>
+                    </div>
+                    <div class="summary-stats">
+                        <span class="stat passed">${passed} passed</span>
+                        <span class="stat failed">${failedCount} failed</span>
+                        <span class="stat">/ ${total} total</span>
+                    </div>
+                </div>
+                ${retryHtml}
+                ${historyHtml}
+            </div>`;
+        }
+
+        function generatePendingCard(item) {
+            const appName = item.app_name || 'unknown';
+            const position = item.position || 0;
+            const payload = item.payload || {};
+            const env = payload.env || 'production';
+            const actionNames = payload.action_names || [];
+            const actionInfo = actionNames.length > 0 ? `${actionNames.length} specific actions` : 'all actions';
+
+            return `<div class="run-card" data-app="${appName.toLowerCase()}">
+                <div class="run-header">
+                    <div class="run-title">
+                        <span class="app-name">${appName}</span>
+                        <span class="status-badge" style="background:#17a2b8">QUEUED #${position}</span>
+                    </div>
+                    <div class="run-meta">
+                        <span>Environment: ${env}</span>
+                        <span>Testing: ${actionInfo}</span>
+                    </div>
+                </div>
+            </div>`;
+        }
+
+        function renderCards() {
+            const activeGrid = document.getElementById('activeGrid');
+            const completedGrid = document.getElementById('completedGrid');
+            const pendingGrid = document.getElementById('pendingGrid');
+
+            if (allWorkflows.active.length > 0) {
+                activeGrid.innerHTML = allWorkflows.active.map(w => generateWorkflowCard(w, true)).join('');
+            } else {
+                activeGrid.innerHTML = '<div class="empty-state">No active workflows</div>';
+            }
+
+            if (allWorkflows.completed.length > 0) {
+                completedGrid.innerHTML = allWorkflows.completed.map(w => generateWorkflowCard(w, false)).join('');
+            } else {
+                completedGrid.innerHTML = '<div class="empty-state">No completed workflows</div>';
+            }
+
+            if (allWorkflows.pending.length > 0) {
+                pendingGrid.innerHTML = allWorkflows.pending.map(p => generatePendingCard(p)).join('');
+            } else {
+                pendingGrid.innerHTML = '<div class="empty-state">Queue is empty</div>';
+            }
+
+            applyFilters();
+        }
+
+        function toggleHistory(workflowId) {
+            const history = document.getElementById(`history-${workflowId}`);
+            if (history) {
+                history.style.display = history.style.display === 'none' || history.style.display === '' ? 'block' : 'none';
+            }
+        }
+
+        function showTab(tabName) {
+            currentTab = tabName;
+            window.location.hash = tabName;
+
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
+
+            document.getElementById(tabName).classList.add('active');
+            document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
+
+            applyFilters();
+        }
+
+        function applyFilters() {
+            const searchTerm = (document.getElementById('searchInput').value || '').toLowerCase().trim();
+            const statusFilter = document.getElementById('statusFilter').value;
+            const sortFilter = document.getElementById('sortFilter').value;
+
+            const activeTabContent = document.querySelector('.tab-content.active');
+            const allCards = activeTabContent ? activeTabContent.querySelectorAll('.run-card') : [];
+
+            let visibleCount = 0;
+            let totalCount = 0;
+            let cardsToSort = [];
+
+            allCards.forEach(card => {
+                totalCount++;
+                const appName = card.dataset.app || '';
+                const workflowId = card.dataset.workflow || '';
+                const ticket = card.dataset.ticket || '';
+                const state = card.dataset.state || '';
+                const passed = parseInt(card.dataset.passed || '0');
+                const total = parseInt(card.dataset.total || '0');
+                const failed = parseInt(card.dataset.failed || '0');
+                const completedTime = card.dataset.completed || '';
+                const passRate = total > 0 ? (passed / total) : 0;
+
+                // Search filter
+                let matchesSearch = searchTerm === '' ||
+                    appName.includes(searchTerm) ||
+                    workflowId.includes(searchTerm) ||
+                    ticket.includes(searchTerm);
+
+                // Status filter
+                let matchesStatus = true;
+                if (statusFilter === 'success') {
+                    matchesStatus = state.includes('success') || (total > 0 && passed === total && failed === 0);
+                } else if (statusFilter === 'failed') {
+                    matchesStatus = state.includes('failed') || state.includes('timed_out') || state.includes('aborted');
+                } else if (statusFilter === 'auth_issue') {
+                    matchesStatus = state.includes('auth');
+                } else if (statusFilter === 'has_failures') {
+                    matchesStatus = failed > 0;
+                } else if (statusFilter === 'perfect') {
+                    matchesStatus = total > 0 && passed === total;
+                }
+
+                if (matchesSearch && matchesStatus) {
+                    card.style.display = '';
+                    visibleCount++;
+                    cardsToSort.push({ card, passed, total, passRate, completedTime });
+                } else {
+                    card.style.display = 'none';
+                }
+            });
+
+            // Sort cards
+            if (cardsToSort.length > 1) {
+                const grid = activeTabContent?.querySelector('.runs-grid');
+                if (grid) {
+                    cardsToSort.sort((a, b) => {
+                        switch (sortFilter) {
+                            case 'time_desc': return b.completedTime.localeCompare(a.completedTime);
+                            case 'time_asc': return a.completedTime.localeCompare(b.completedTime);
+                            case 'passed_desc': return b.passed - a.passed;
+                            case 'passed_asc': return a.passed - b.passed;
+                            case 'rate_desc': return b.passRate - a.passRate;
+                            case 'rate_asc': return a.passRate - b.passRate;
+                            default: return 0;
+                        }
+                    });
+                    cardsToSort.forEach(item => grid.appendChild(item.card));
+                }
+            }
+
+            const countSpan = document.getElementById('searchCount');
+            if (searchTerm || statusFilter !== 'all') {
+                countSpan.textContent = `Showing ${visibleCount} of ${totalCount}`;
+            } else {
+                countSpan.textContent = '';
+            }
+        }
+
+        // Retry modal functions
+        async function showRetryModal(appName, workflowId, linearTicket, connectionId, environment, runNumber) {
+            document.getElementById('modalAppName').textContent = appName;
+            document.getElementById('scriptOutput').innerHTML = '<div class="loading">Loading failed actions...</div>';
+            document.getElementById('retryModal').classList.add('active');
+
+            currentRetryData = { app_name: appName, workflow_id: workflowId, linear_ticket: linearTicket, connection_id: connectionId, environment, run_number: runNumber };
+
+            // Get failed actions from Supabase
+            const { data: runs } = await supabaseClient
+                .from('workflow_runs')
+                .select('failed_actions')
+                .eq('workflow_id', workflowId)
+                .order('run_number', { ascending: false })
+                .limit(1);
+
+            const failedActions = runs?.[0]?.failed_actions || [];
+            if (!failedActions.length) {
+                document.getElementById('scriptOutput').textContent = 'No failed actions found';
+                return;
+            }
+
+            currentRetryData.failed_actions = failedActions;
+
+            const payload = {
+                model_provider: 'claude',
+                force_run: true,
+                timeout_hours: 36,
+                previous_workflow_id: workflowId,
+                linear_issue_link: linearTicket ? `https://linear.app/composio/issue/${linearTicket}` : '',
+                env: environment,
+                integrator_branch: 'next',
+                app_name: appName,
+                base_branch: 'master',
+                connection_id: connectionId,
+                action_names: failedActions,
+                test_instruction: "Test thoroughly and ensure: (1) tool/parameter descriptions are clear and accurate, not sloppy or vague, (2) correct API endpoints are used, (3) response schemas are complete and useful, (4) the tool is well-built for agent use with sensible defaults."
+            };
+
+            const script = `curl -X POST "${INTEGRATOR_API_URL}/workflows/test-and-fix-action/run" \\
+  -H "Content-Type: application/json" \\
+  -d '${JSON.stringify(payload, null, 2)}'`;
+
+            document.getElementById('scriptOutput').textContent = script;
+        }
+
+        function closeRetryModal() {
+            document.getElementById('retryModal').classList.remove('active');
+        }
+
+        function copyScript() {
+            const scriptText = document.getElementById('scriptOutput').textContent;
+            navigator.clipboard.writeText(scriptText).then(() => alert('Script copied!'));
+        }
+
+        async function executeRetry() {
+            const btn = document.getElementById('executeBtn');
+            const scriptOutput = document.getElementById('scriptOutput');
+            btn.disabled = true;
+            btn.textContent = 'Executing...';
+
+            try {
+                const response = await fetch('/api/retry', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(currentRetryData)
+                });
+                const data = await response.json();
+
+                if (data.error) {
+                    scriptOutput.innerHTML = `<span style="color:#dc3545">ERROR: ${data.error}</span>`;
+                    btn.disabled = false;
+                    btn.textContent = 'Execute & Track';
+                } else {
+                    scriptOutput.innerHTML = `<span style="color:#28a745">SUCCESS!</span>\n\nWorkflow ID: ${data.workflow_id}\nRun Number: ${data.run_number}\nActions to retry: ${data.actions_count}`;
+                    btn.textContent = 'Done - Refresh Page';
+                    btn.onclick = () => window.location.reload();
+                    btn.disabled = false;
+                }
+            } catch (e) {
+                scriptOutput.innerHTML = `<span style="color:#dc3545">ERROR: ${e.message}</span>`;
+                btn.disabled = false;
+                btn.textContent = 'Execute & Track';
+            }
+        }
+
+        async function updateMaxConcurrent() {
+            const value = parseInt(document.getElementById('maxConcurrent').value);
+            if (isNaN(value) || value < 1 || value > 20) {
+                alert('Please enter a number between 1 and 20');
+                return;
+            }
+
+            const { error } = await supabaseClient
+                .from('config')
+                .upsert({ key: 'max_concurrent', value: value });
+
+            if (error) {
+                alert('Error: ' + error.message);
+            } else {
+                alert('Max concurrent updated to ' + value);
+            }
+        }
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') closeRetryModal();
+            if (e.key === '/' && !['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) {
+                e.preventDefault();
+                document.getElementById('searchInput').focus();
+            }
+        });
+
+        document.getElementById('retryModal').addEventListener('click', (e) => {
+            if (e.target.classList.contains('modal-overlay')) closeRetryModal();
+        });
+
+        // Load config and initialize
+        async function init() {
+            try {
+                const configResp = await fetch('/api/config');
+                const config = await configResp.json();
+                SUPABASE_URL = config.supabaseUrl;
+                SUPABASE_ANON_KEY = config.supabaseAnonKey;
+
+                // Initialize Supabase client with loaded config
+                supabaseClient = window.supabase.createClient(
+                    config.supabaseUrl,
+                    config.supabaseAnonKey
+                );
+            } catch (e) {
+                console.error('Failed to load config:', e);
+                document.body.innerHTML = '<div style="color:red;padding:40px;text-align:center">Failed to load configuration. Please check environment variables.</div>';
+                return;
+            }
+
+            if (currentTab && document.getElementById(currentTab)) {
+                showTab(currentTab);
+            }
+            fetchData();
+        }
+
+        // Initial load and auto-refresh
+        document.addEventListener('DOMContentLoaded', init);
+
+        setInterval(fetchData, 10000);
+    </script>
+</body>
+</html>
