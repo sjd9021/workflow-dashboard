@@ -930,8 +930,16 @@
             document.getElementById('scriptOutput').innerHTML = '<div class="loading">Loading...</div>';
             document.getElementById('connectionIdInput').value = connectionId || '';
             document.getElementById('linearTicketInput').value = linearTicket || '';
+            
+            // Reset execute button state
+            const executeBtn = document.getElementById('executeBtn');
+            executeBtn.disabled = false;
+            executeBtn.textContent = 'Execute & Track';
+            executeBtn.onclick = executeRetry;
+            
             document.getElementById('retryModal').classList.add('active');
 
+            // Create fresh retry data object
             currentRetryData = { 
                 app_name: appName, 
                 workflow_id: workflowId, 
@@ -939,15 +947,17 @@
                 connection_id: connectionId, 
                 environment, 
                 run_number: runNumber,
-                complete_rerun: completeRerun
+                complete_rerun: completeRerun,
+                failed_actions: [] // Initialize empty
             };
 
             if (completeRerun) {
-                // Complete rerun - don't pass any actions
-                currentRetryData.failed_actions = [];
+                // Complete rerun - don't pass any actions (already initialized as [])
+                console.log('Complete rerun mode - no action_names will be sent');
                 updateScriptOutput();
             } else {
-                // Get failed actions from Supabase
+                // Get failed actions from Supabase for retry
+                console.log('Retry failed mode - fetching failed actions from Supabase');
                 const { data: runs } = await supabaseClient
                     .from('workflow_runs')
                     .select('failed_actions')
@@ -956,6 +966,8 @@
                     .limit(1);
 
                 const failedActions = runs?.[0]?.failed_actions || [];
+                console.log('Found failed actions:', failedActions);
+                
                 if (!failedActions.length) {
                     document.getElementById('scriptOutput').textContent = 'No failed actions found';
                     return;
@@ -1021,24 +1033,36 @@
             btn.textContent = 'Executing...';
 
             try {
+                console.log('Sending retry request:', currentRetryData);
                 const response = await fetch('/api/retry.js', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(currentRetryData)
                 });
                 const data = await response.json();
+                console.log('Retry response:', data);
 
                 if (data.error) {
-                    scriptOutput.innerHTML = `<span style="color:#dc3545">ERROR: ${data.error}</span>`;
+                    let errorMsg = `<span style="color:#dc3545">ERROR: ${data.error}</span>`;
+                    if (data.details) {
+                        errorMsg += `\n\nDetails: ${data.details}`;
+                    }
+                    if (data.api_response) {
+                        errorMsg += `\n\nAPI Response: ${JSON.stringify(data.api_response, null, 2)}`;
+                    }
+                    scriptOutput.innerHTML = errorMsg;
                     btn.disabled = false;
                     btn.textContent = 'Execute & Track';
                 } else {
-                    scriptOutput.innerHTML = `<span style="color:#28a745">SUCCESS!</span>\n\nWorkflow ID: ${data.workflow_id}\nRun Number: ${data.run_number}\nActions to retry: ${data.actions_count}`;
-                    btn.textContent = 'Done - Refresh Page';
-                    btn.onclick = () => window.location.reload();
-                    btn.disabled = false;
+                    const rerunType = data.complete_rerun ? 'Complete Rerun' : 'Failed Actions Retry';
+                    scriptOutput.innerHTML = `<span style="color:#28a745">✅ SUCCESS! ${rerunType}</span>\n\nWorkflow ID: ${data.workflow_id}\nRun Number: ${data.run_number}\nActions to retry: ${data.actions_count}\n\nRefreshing dashboard in 2 seconds...`;
+                    btn.disabled = true;
+                    btn.textContent = 'Success - Refreshing...';
+                    // Auto-refresh after 2 seconds
+                    setTimeout(() => window.location.reload(), 2000);
                 }
             } catch (e) {
+                console.error('Retry error:', e);
                 scriptOutput.innerHTML = `<span style="color:#dc3545">ERROR: ${e.message}</span>`;
                 btn.disabled = false;
                 btn.textContent = 'Execute & Track';

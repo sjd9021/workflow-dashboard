@@ -46,6 +46,8 @@ export default async function handler(req, res) {
             payload.action_names = failed_actions;
         }
 
+        console.log('Calling Integrator API with payload:', JSON.stringify(payload, null, 2));
+
         // Call Integrator API
         const apiResponse = await fetch(`${INTEGRATOR_API_URL}/workflows/test-and-fix-action/run`, {
             method: 'POST',
@@ -54,12 +56,15 @@ export default async function handler(req, res) {
         });
 
         const apiResult = await apiResponse.json();
+        console.log('Integrator API response:', JSON.stringify(apiResult, null, 2));
 
         if (!apiResponse.ok || !apiResult.workflow_id) {
+            console.error('API Error - Status:', apiResponse.status, 'Result:', apiResult);
             return res.status(500).json({
                 error: 'Failed to trigger workflow',
-                details: apiResult.message || 'No workflow_id returned',
-                api_response: apiResult
+                details: apiResult.message || apiResult.error || 'No workflow_id returned',
+                api_response: apiResult,
+                http_status: apiResponse.status
             });
         }
 
