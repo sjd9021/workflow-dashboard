@@ -518,6 +518,13 @@
                     <label for="linearTicketInput">Linear Ticket:</label>
                     <input type="text" id="linearTicketInput" class="retry-input" placeholder="PAR-1234" onchange="updateRetryLinearTicket(this.value)">
                 </div>
+                <div class="retry-config">
+                    <label for="environmentSelect">Environment:</label>
+                    <select id="environmentSelect" class="retry-input" onchange="updateRetryEnvironment(this.value)">
+                        <option value="production">Production</option>
+                        <option value="staging">Staging</option>
+                    </select>
+                </div>
                 <div id="scriptOutput" class="script-output"></div>
             </div>
             <div class="modal-footer">
@@ -949,6 +956,10 @@
             document.getElementById('connectionIdInput').value = connectionId || '';
             document.getElementById('linearTicketInput').value = linearTicket || '';
             
+            // Normalize and set environment (default to production)
+            const normalizedEnv = environment === 'prod' ? 'production' : (environment || 'production');
+            document.getElementById('environmentSelect').value = normalizedEnv;
+            
             // Reset execute button state
             const executeBtn = document.getElementById('executeBtn');
             executeBtn.disabled = false;
@@ -963,7 +974,7 @@
                 workflow_id: workflowId, 
                 linear_ticket: linearTicket, 
                 connection_id: connectionId, 
-                environment, 
+                environment: normalizedEnv, 
                 run_number: runNumber,
                 complete_rerun: completeRerun,
                 failed_actions: [] // Initialize empty
@@ -1017,6 +1028,11 @@
 
         function updateRetryLinearTicket(newLinearTicket) {
             currentRetryData.linear_ticket = newLinearTicket;
+            updateScriptOutput();
+        }
+
+        function updateRetryEnvironment(newEnvironment) {
+            currentRetryData.environment = newEnvironment;
             updateScriptOutput();
         }
 
