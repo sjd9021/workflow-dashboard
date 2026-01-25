@@ -514,6 +514,10 @@
                     <label for="connectionIdInput">Connection ID:</label>
                     <input type="text" id="connectionIdInput" class="retry-input" placeholder="ca_xxxxx" onchange="updateRetryConnectionId(this.value)">
                 </div>
+                <div class="retry-config">
+                    <label for="linearTicketInput">Linear Ticket:</label>
+                    <input type="text" id="linearTicketInput" class="retry-input" placeholder="PAR-1234" onchange="updateRetryLinearTicket(this.value)">
+                </div>
                 <div id="scriptOutput" class="script-output"></div>
             </div>
             <div class="modal-footer">
@@ -703,11 +707,14 @@
                 ? `<a href="https://usefulagents.com/workflows/${workflowId}?run=${runNumber}" target="_blank" class="ua-link">View Logs</a>`
                 : '';
 
-            const retryHtml = !isActive && failedCount > 0
+            const retryHtml = !isActive
                 ? `<div class="retry-section">
-                    <span class="retry-info">${failedCount} failed actions</span>
-                    <button class="retry-btn" onclick="showRetryModal('${appName}', '${workflowId}', '${linearTicket}', '${connectionId}', '${environment}', ${runNumber})">
+                    ${failedCount > 0 ? `<span class="retry-info">${failedCount} failed actions</span>` : ''}
+                    ${failedCount > 0 ? `<button class="retry-btn" onclick="showRetryModal('${appName}', '${workflowId}', '${linearTicket}', '${connectionId}', '${environment}', ${runNumber}, false)" style="margin-right: 8px;">
                         <span>Retry Failed</span>
+                    </button>` : ''}
+                    <button class="retry-btn" onclick="showRetryModal('${appName}', '${workflowId}', '${linearTicket}', '${connectionId}', '${environment}', ${runNumber}, true)" style="background: #e67e22;">
+                        <span>Complete Rerun</span>
                     </button>
                 </div>`
                 : '';
@@ -916,30 +923,47 @@
         }
 
         // Retry modal functions
-        async function showRetryModal(appName, workflowId, linearTicket, connectionId, environment, runNumber) {
+        async function showRetryModal(appName, workflowId, linearTicket, connectionId, environment, runNumber, completeRerun = false) {
+            const modalTitle = completeRerun ? `Complete Rerun - ${appName}` : `Retry Failed Actions - ${appName}`;
             document.getElementById('modalAppName').textContent = appName;
-            document.getElementById('scriptOutput').innerHTML = '<div class="loading">Loading failed actions...</div>';
+            document.querySelector('.modal-header h2').textContent = modalTitle;
+            document.getElementById('scriptOutput').innerHTML = '<div class="loading">Loading...</div>';
             document.getElementById('connectionIdInput').value = connectionId || '';
+            document.getElementById('linearTicketInput').value = linearTicket || '';
             document.getElementById('retryModal').classList.add('active');
 
-            currentRetryData = { app_name: appName, workflow_id: workflowId, linear_ticket: linearTicket, connection_id: connectionId, environment, run_number: runNumber };
+            currentRetryData = { 
+                app_name: appName, 
+                workflow_id: workflowId, 
+                linear_ticket: linearTicket, 
+                connection_id: connectionId, 
+                environment, 
+                run_number: runNumber,
+                complete_rerun: completeRerun
+            };
 
-            // Get failed actions from Supabase
-            const { data: runs } = await supabaseClient
-                .from('workflow_runs')
-                .select('failed_actions')
-                .eq('workflow_id', workflowId)
-                .order('run_number', { ascending: false })
-                .limit(1);
+            if (completeRerun) {
+                // Complete rerun - don't pass any actions
+                currentRetryData.failed_actions = [];
+                updateScriptOutput();
+            } else {
+                // Get failed actions from Supabase
+                const { data: runs } = await supabaseClient
+                    .from('workflow_runs')
+                    .select('failed_actions')
+                    .eq('workflow_id', workflowId)
+                    .order('run_number', { ascending: false })
+                    .limit(1);
 
-            const failedActions = runs?.[0]?.failed_actions || [];
-            if (!failedActions.length) {
-                document.getElementById('scriptOutput').textContent = 'No failed actions found';
-                return;
+                const failedActions = runs?.[0]?.failed_actions || [];
+                if (!failedActions.length) {
+                    document.getElementById('scriptOutput').textContent = 'No failed actions found';
+                    return;
+                }
+
+                currentRetryData.failed_actions = failedActions;
+                updateScriptOutput();
             }
-
-            currentRetryData.failed_actions = failedActions;
-            updateScriptOutput();
         }
 
         function updateRetryConnectionId(newConnectionId) {
@@ -947,10 +971,13 @@
             updateScriptOutput();
         }
 
-        function updateScriptOutput() {
-            const { app_name, workflow_id, linear_ticket, connection_id, environment, failed_actions } = currentRetryData;
+        function updateRetryLinearTicket(newLinearTicket) {
+            currentRetryData.linear_ticket = newLinearTicket;
+            updateScriptOutput();
+        }
 
-            if (!failed_actions?.length) return;
+        function updateScriptOutput() {
+            const { app_name, workflow_id, linear_ticket, connection_id, environment, failed_actions, complete_rerun } = currentRetryData;
 
             const payload = {
                 model_provider: 'claude',
@@ -963,9 +990,13 @@
                 app_name: app_name,
                 base_branch: 'master',
                 connection_id: connection_id,
-                action_names: failed_actions,
                 test_instruction: "Test thoroughly and ensure: (1) tool/parameter descriptions are clear and accurate, not sloppy or vague, (2) correct API endpoints are used, (3) response schemas are complete and useful, (4) the tool is well-built for agent use with sensible defaults."
             };
+
+            // Only add action_names if not a complete rerun
+            if (!complete_rerun && failed_actions?.length) {
+                payload.action_names = failed_actions;
+            }
 
             const script = `curl -X POST "${INTEGRATOR_API_URL}/workflows/test-and-fix-action/run" \\
   -H "Content-Type: application/json" \\

@@ -20,10 +20,10 @@ export default async function handler(req, res) {
     }
 
     try {
-        const { app_name, workflow_id, connection_id, environment, linear_ticket, failed_actions } = req.body;
+        const { app_name, workflow_id, connection_id, environment, linear_ticket, failed_actions, complete_rerun } = req.body;
 
-        if (!app_name || !workflow_id || !connection_id || !failed_actions?.length) {
-            return res.status(400).json({ error: 'Missing required fields' });
+        if (!app_name || !workflow_id || !connection_id) {
+            return res.status(400).json({ error: 'Missing required fields (app_name, workflow_id, connection_id)' });
         }
 
         // Build payload for Integrator API
@@ -38,9 +38,13 @@ export default async function handler(req, res) {
             app_name: app_name,
             base_branch: 'master',
             connection_id: connection_id,
-            action_names: failed_actions,
             test_instruction: "Test thoroughly and ensure: (1) tool/parameter descriptions are clear and accurate, not sloppy or vague, (2) correct API endpoints are used, (3) response schemas are complete and useful, (4) the tool is well-built for agent use with sensible defaults."
         };
+
+        // Only add action_names if not a complete rerun
+        if (!complete_rerun && failed_actions?.length) {
+            payload.action_names = failed_actions;
+        }
 
         // Call Integrator API
         const apiResponse = await fetch(`${INTEGRATOR_API_URL}/workflows/test-and-fix-action/run`, {
@@ -94,7 +98,8 @@ export default async function handler(req, res) {
             success: true,
             workflow_id: apiResult.workflow_id,
             run_number: newRunNumber,
-            actions_count: failed_actions.length,
+            actions_count: complete_rerun ? 'ALL' : (failed_actions?.length || 0),
+            complete_rerun: complete_rerun || false,
             api_response: apiResult
         });
 
