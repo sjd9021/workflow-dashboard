@@ -26,6 +26,9 @@ export default async function handler(req, res) {
             return res.status(400).json({ error: 'Missing required fields (app_name, workflow_id, connection_id)' });
         }
 
+        // Normalize environment: 'prod' -> 'production', default to 'production'
+        const normalizedEnv = environment === 'prod' ? 'production' : (environment || 'production');
+
         // Build payload for Integrator API
         const payload = {
             model_provider: 'claude',
@@ -33,7 +36,7 @@ export default async function handler(req, res) {
             timeout_hours: 36,
             previous_workflow_id: workflow_id,
             linear_issue_link: linear_ticket ? `https://linear.app/composio/issue/${linear_ticket}` : '',
-            env: environment || 'production',
+            env: normalizedEnv,
             integrator_branch: 'next',
             app_name: app_name,
             base_branch: 'master',
