@@ -956,25 +956,38 @@
                 console.log('Complete rerun mode - no action_names will be sent');
                 updateScriptOutput();
             } else {
-                // Get failed actions from Supabase for retry
-                console.log('Retry failed mode - fetching failed actions from Supabase');
-                const { data: runs } = await supabaseClient
-                    .from('workflow_runs')
-                    .select('failed_actions')
-                    .eq('workflow_id', workflowId)
-                    .order('run_number', { ascending: false })
-                    .limit(1);
+                // Get failed actions from Integrator API (source of truth)
+                console.log('Retry failed mode - fetching failed actions from Integrator API');
+                try {
+                    const apiResponse = await fetch(`${INTEGRATOR_API_URL}/dashboard/get-data`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            workflow_id: workflowId,
+                            run_number: runNumber
+                        })
+                    });
 
-                const failedActions = runs?.[0]?.failed_actions || [];
-                console.log('Found failed actions:', failedActions);
-                
-                if (!failedActions.length) {
-                    document.getElementById('scriptOutput').textContent = 'No failed actions found';
+                    if (!apiResponse.ok) {
+                        throw new Error(`API error: ${apiResponse.status}`);
+                    }
+
+                    const apiData = await apiResponse.json();
+                    const failedActions = apiData.failed_actions || [];
+                    console.log('API returned failed actions:', failedActions);
+                    
+                    if (!failedActions.length) {
+                        document.getElementById('scriptOutput').textContent = 'No failed actions found';
+                        return;
+                    }
+
+                    currentRetryData.failed_actions = failedActions;
+                    updateScriptOutput();
+                } catch (error) {
+                    console.error('Error fetching failed actions from API:', error);
+                    document.getElementById('scriptOutput').innerHTML = `<span style="color:#dc3545">Error loading failed actions: ${error.message}</span>`;
                     return;
                 }
-
-                currentRetryData.failed_actions = failedActions;
-                updateScriptOutput();
             }
         }
 
