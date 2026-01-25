@@ -601,10 +601,28 @@
                     const firstRun = sortedRuns[0];
                     const hasActive = wfRuns.some(r => r.status === 'active');
 
-                    const aggregatedPassed = sortedRuns
+                    // Detect "Complete Rerun": any run after Run 1 that tests the same total count as Run 1
+                    // This means we did a full rerun, not just a retry of failed actions
+                    const firstRunTotal = firstRun.total || 0;
+                    let aggregationStartIndex = 0;
+                    
+                    // Find the most recent complete rerun (if any)
+                    for (let i = sortedRuns.length - 1; i > 0; i--) {
+                        const run = sortedRuns[i];
+                        if (run.total === firstRunTotal && run.status === 'completed') {
+                            // This run tested the same number of actions as Run 1 - it's a complete rerun
+                            aggregationStartIndex = i;
+                            console.log(`Detected complete rerun at ${wfId} run ${run.run_number} - resetting aggregation from this point`);
+                            break;
+                        }
+                    }
+
+                    // Aggregate passed counts from the aggregation start point forward
+                    const runsToAggregate = sortedRuns.slice(aggregationStartIndex);
+                    const aggregatedPassed = runsToAggregate
                         .filter(r => r.status === 'completed')
                         .reduce((sum, r) => sum + (r.passed || 0), 0);
-                    const total = firstRun.total || 0;
+                    const total = firstRunTotal;
 
                     totalTested += total;
 
