@@ -956,10 +956,10 @@
                 console.log('Complete rerun mode - no action_names will be sent');
                 updateScriptOutput();
             } else {
-                // Get failed actions from Integrator API (source of truth)
+                // Get failed actions from Integrator API via backend proxy (to avoid CORS)
                 console.log('Retry failed mode - fetching failed actions from Integrator API');
                 try {
-                    const apiResponse = await fetch(`${INTEGRATOR_API_URL}/dashboard/get-data`, {
+                    const response = await fetch('/api/get-failed-actions.js', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
@@ -968,12 +968,13 @@
                         })
                     });
 
-                    if (!apiResponse.ok) {
-                        throw new Error(`API error: ${apiResponse.status}`);
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        throw new Error(errorData.error || `API error: ${response.status}`);
                     }
 
-                    const apiData = await apiResponse.json();
-                    const failedActions = apiData.failed_actions || [];
+                    const data = await response.json();
+                    const failedActions = data.failed_actions || [];
                     console.log('API returned failed actions:', failedActions);
                     
                     if (!failedActions.length) {
@@ -984,7 +985,7 @@
                     currentRetryData.failed_actions = failedActions;
                     updateScriptOutput();
                 } catch (error) {
-                    console.error('Error fetching failed actions from API:', error);
+                    console.error('Error fetching failed actions:', error);
                     document.getElementById('scriptOutput').innerHTML = `<span style="color:#dc3545">Error loading failed actions: ${error.message}</span>`;
                     return;
                 }
