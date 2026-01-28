@@ -511,6 +511,10 @@
             </div>
             <div class="modal-body">
                 <div class="retry-config">
+                    <label for="appNameInput">App Name (slug):</label>
+                    <input type="text" id="appNameInput" class="retry-input" placeholder="e.g. agent_mail" onchange="updateRetryAppName(this.value)">
+                </div>
+                <div class="retry-config">
                     <label for="connectionIdInput">Connection ID:</label>
                     <input type="text" id="connectionIdInput" class="retry-input" placeholder="ca_xxxxx" onchange="updateRetryConnectionId(this.value)">
                 </div>
@@ -953,6 +957,7 @@
             document.getElementById('modalAppName').textContent = appName;
             document.querySelector('.modal-header h2').textContent = modalTitle;
             document.getElementById('scriptOutput').innerHTML = '<div class="loading">Loading...</div>';
+            document.getElementById('appNameInput').value = appName || '';
             document.getElementById('connectionIdInput').value = connectionId || '';
             document.getElementById('linearTicketInput').value = linearTicket || '';
             
@@ -1019,6 +1024,11 @@
                     return;
                 }
             }
+        }
+
+        function updateRetryAppName(newAppName) {
+            currentRetryData.app_name = newAppName;
+            updateScriptOutput();
         }
 
         function updateRetryConnectionId(newConnectionId) {
