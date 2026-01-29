@@ -329,6 +329,42 @@
             color: #28a745 !important;
             font-weight: 500;
         }
+        /* Pagination styles */
+        .pagination {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 15px;
+            margin-top: 20px;
+            padding: 15px;
+            background: #16213e;
+            border-radius: 8px;
+        }
+        .pagination-btn {
+            background: #0f3460;
+            color: #fff;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+        .pagination-btn:hover:not(:disabled) {
+            background: #1a4a7a;
+        }
+        .pagination-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .pagination-info {
+            color: #888;
+            font-size: 14px;
+        }
+        .pagination-info span {
+            color: #fff;
+            font-weight: bold;
+        }
         /* Modal styles */
         .modal-overlay {
             display: none;
@@ -500,6 +536,11 @@
         <div class="runs-grid" id="completedGrid">
             <div class="loading">Loading...</div>
         </div>
+        <div class="pagination" id="completedPagination">
+            <button class="pagination-btn" onclick="changePage(-1)" id="prevPageBtn" disabled>&laquo; Prev</button>
+            <span class="pagination-info">Page <span id="currentPage">1</span> of <span id="totalPages">1</span></span>
+            <button class="pagination-btn" onclick="changePage(1)" id="nextPageBtn" disabled>Next &raquo;</button>
+        </div>
     </div>
 
     <!-- Retry Modal -->
@@ -552,6 +593,11 @@
         let currentRetryData = {};
         let allWorkflows = { active: [], completed: [], pending: [] };
 
+        // Pagination state
+        const ITEMS_PER_PAGE = 50;
+        let currentPage = 1;
+        let totalPages = 1;
+
         // Format timestamp
         function formatTime(ts) {
             if (!ts) return 'N/A';
@@ -566,12 +612,28 @@
         // Fetch all data from Supabase
         async function fetchData() {
             try {
-                // Fetch workflow runs with workflow info (limit to avoid Supabase 1000 row cap)
-                const { data: runs, error: runsError } = await supabaseClient
-                    .from('workflow_runs')
-                    .select('*, workflows(app_name, linear_ticket, connection_id, environment)')
-                    .order('started_at', { ascending: false })
-                    .limit(800);
+                // Fetch all workflow runs with workflow info (paginate through Supabase's 1000 row limit)
+                let allRuns = [];
+                let offset = 0;
+                const batchSize = 1000;
+
+                while (true) {
+                    const { data: batch, error: batchError } = await supabaseClient
+                        .from('workflow_runs')
+                        .select('*, workflows(app_name, linear_ticket, connection_id, environment)')
+                        .order('started_at', { ascending: false })
+                        .range(offset, offset + batchSize - 1);
+
+                    if (batchError) throw batchError;
+                    if (!batch || batch.length === 0) break;
+
+                    allRuns = allRuns.concat(batch);
+                    if (batch.length < batchSize) break;
+                    offset += batchSize;
+                }
+
+                const runs = allRuns;
+                const runsError = null;
 
                 if (runsError) throw runsError;
 
@@ -839,9 +901,26 @@
             }
 
             if (allWorkflows.completed.length > 0) {
-                completedGrid.innerHTML = allWorkflows.completed.map(w => generateWorkflowCard(w, false)).join('');
+                // Calculate pagination
+                totalPages = Math.ceil(allWorkflows.completed.length / ITEMS_PER_PAGE);
+                if (currentPage > totalPages) currentPage = totalPages;
+                if (currentPage < 1) currentPage = 1;
+
+                const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+                const endIndex = Math.min(startIndex + ITEMS_PER_PAGE, allWorkflows.completed.length);
+                const paginatedCompleted = allWorkflows.completed.slice(startIndex, endIndex);
+
+                completedGrid.innerHTML = paginatedCompleted.map(w => generateWorkflowCard(w, false)).join('');
+
+                // Update pagination controls
+                document.getElementById('currentPage').textContent = currentPage;
+                document.getElementById('totalPages').textContent = totalPages;
+                document.getElementById('prevPageBtn').disabled = currentPage <= 1;
+                document.getElementById('nextPageBtn').disabled = currentPage >= totalPages;
+                document.getElementById('completedPagination').style.display = totalPages > 1 ? 'flex' : 'none';
             } else {
                 completedGrid.innerHTML = '<div class="empty-state">No completed workflows</div>';
+                document.getElementById('completedPagination').style.display = 'none';
             }
 
             if (allWorkflows.pending.length > 0) {
@@ -871,6 +950,16 @@
             document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
 
             applyFilters();
+        }
+
+        function changePage(delta) {
+            const newPage = currentPage + delta;
+            if (newPage >= 1 && newPage <= totalPages) {
+                currentPage = newPage;
+                renderCards();
+                // Scroll to top of completed section
+                document.getElementById('completedGrid').scrollIntoView({ behavior: 'smooth' });
+            }
         }
 
         function applyFilters() {
