@@ -889,6 +889,70 @@
             </div>`;
         }
 
+        // Filter and sort workflows based on current filter settings
+        function getFilteredWorkflows(workflows) {
+            const searchTerm = (document.getElementById('searchInput').value || '').toLowerCase().trim();
+            const statusFilter = document.getElementById('statusFilter').value;
+            const sortFilter = document.getElementById('sortFilter').value;
+
+            let filtered = workflows.filter(workflow => {
+                const wf = workflow.workflows || {};
+                const appName = (wf.app_name || '').toLowerCase();
+                const workflowId = (workflow.workflow_id || '').toLowerCase();
+                const ticket = (wf.linear_ticket || '').toLowerCase();
+                const state = (workflow.execution_state || '').toLowerCase();
+                const passed = workflow.passed || 0;
+                const total = workflow.total || 0;
+                const failed = Math.max(0, total - passed);
+
+                // Search filter
+                const matchesSearch = searchTerm === '' ||
+                    appName.includes(searchTerm) ||
+                    workflowId.includes(searchTerm) ||
+                    ticket.includes(searchTerm);
+
+                // Status filter
+                let matchesStatus = true;
+                if (statusFilter === 'success') {
+                    matchesStatus = state.includes('success') || (total > 0 && passed === total && failed === 0);
+                } else if (statusFilter === 'failed') {
+                    matchesStatus = state.includes('failed') || state.includes('timed_out') || state.includes('aborted');
+                } else if (statusFilter === 'auth_issue') {
+                    matchesStatus = state.includes('auth');
+                } else if (statusFilter === 'has_failures') {
+                    matchesStatus = failed > 0;
+                } else if (statusFilter === 'perfect') {
+                    matchesStatus = total > 0 && passed === total;
+                }
+
+                return matchesSearch && matchesStatus;
+            });
+
+            // Sort
+            filtered.sort((a, b) => {
+                const aTime = a.completed_at || a.started_at || '';
+                const bTime = b.completed_at || b.started_at || '';
+
+                switch (sortFilter) {
+                    case 'time_desc': return bTime.localeCompare(aTime);
+                    case 'time_asc': return aTime.localeCompare(bTime);
+                    case 'passed_desc': return (b.passed || 0) - (a.passed || 0);
+                    case 'passed_asc': return (a.passed || 0) - (b.passed || 0);
+                    case 'rate_desc':
+                        const aRate = a.total > 0 ? a.passed / a.total : 0;
+                        const bRate = b.total > 0 ? b.passed / b.total : 0;
+                        return bRate - aRate;
+                    case 'rate_asc':
+                        const aRate2 = a.total > 0 ? a.passed / a.total : 0;
+                        const bRate2 = b.total > 0 ? b.passed / b.total : 0;
+                        return aRate2 - bRate2;
+                    default: return 0;
+                }
+            });
+
+            return filtered;
+        }
+
         function renderCards() {
             const activeGrid = document.getElementById('activeGrid');
             const completedGrid = document.getElementById('completedGrid');
@@ -901,16 +965,23 @@
             }
 
             if (allWorkflows.completed.length > 0) {
-                // Calculate pagination
-                totalPages = Math.ceil(allWorkflows.completed.length / ITEMS_PER_PAGE);
-                if (currentPage > totalPages) currentPage = totalPages;
+                // Filter and sort BEFORE pagination
+                const filteredCompleted = getFilteredWorkflows(allWorkflows.completed);
+
+                // Calculate pagination on filtered results
+                totalPages = Math.ceil(filteredCompleted.length / ITEMS_PER_PAGE);
+                if (currentPage > totalPages) currentPage = Math.max(1, totalPages);
                 if (currentPage < 1) currentPage = 1;
 
                 const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-                const endIndex = Math.min(startIndex + ITEMS_PER_PAGE, allWorkflows.completed.length);
-                const paginatedCompleted = allWorkflows.completed.slice(startIndex, endIndex);
+                const endIndex = Math.min(startIndex + ITEMS_PER_PAGE, filteredCompleted.length);
+                const paginatedCompleted = filteredCompleted.slice(startIndex, endIndex);
 
-                completedGrid.innerHTML = paginatedCompleted.map(w => generateWorkflowCard(w, false)).join('');
+                if (filteredCompleted.length > 0) {
+                    completedGrid.innerHTML = paginatedCompleted.map(w => generateWorkflowCard(w, false)).join('');
+                } else {
+                    completedGrid.innerHTML = '<div class="empty-state">No matching workflows</div>';
+                }
 
                 // Update pagination controls
                 document.getElementById('currentPage').textContent = currentPage;
@@ -918,6 +989,16 @@
                 document.getElementById('prevPageBtn').disabled = currentPage <= 1;
                 document.getElementById('nextPageBtn').disabled = currentPage >= totalPages;
                 document.getElementById('completedPagination').style.display = totalPages > 1 ? 'flex' : 'none';
+
+                // Update search count
+                const searchTerm = document.getElementById('searchInput').value.trim();
+                const statusFilter = document.getElementById('statusFilter').value;
+                const countSpan = document.getElementById('searchCount');
+                if (searchTerm || statusFilter !== 'all') {
+                    countSpan.textContent = `Showing ${filteredCompleted.length} of ${allWorkflows.completed.length}`;
+                } else {
+                    countSpan.textContent = '';
+                }
             } else {
                 completedGrid.innerHTML = '<div class="empty-state">No completed workflows</div>';
                 document.getElementById('completedPagination').style.display = 'none';
@@ -929,7 +1010,10 @@
                 pendingGrid.innerHTML = '<div class="empty-state">Queue is empty</div>';
             }
 
-            applyFilters();
+            // Apply filters for active/pending tabs (completed is already filtered above)
+            if (currentTab !== 'completed') {
+                applyFiltersForActiveTab();
+            }
         }
 
         function toggleHistory(workflowId) {
@@ -962,7 +1046,20 @@
             }
         }
 
+        // Main filter function - handles completed tab specially (re-renders with filter)
         function applyFilters() {
+            if (currentTab === 'completed') {
+                // For completed tab: reset to page 1 and re-render with filters
+                currentPage = 1;
+                renderCards();
+            } else {
+                // For active/pending tabs: use DOM-based filtering
+                applyFiltersForActiveTab();
+            }
+        }
+
+        // DOM-based filtering for active/pending tabs
+        function applyFiltersForActiveTab() {
             const searchTerm = (document.getElementById('searchInput').value || '').toLowerCase().trim();
             const statusFilter = document.getElementById('statusFilter').value;
             const sortFilter = document.getElementById('sortFilter').value;
