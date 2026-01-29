@@ -566,10 +566,12 @@
         // Fetch all data from Supabase
         async function fetchData() {
             try {
-                // Fetch workflow runs with workflow info
+                // Fetch workflow runs with workflow info (limit to avoid Supabase 1000 row cap)
                 const { data: runs, error: runsError } = await supabaseClient
                     .from('workflow_runs')
-                    .select('*, workflows(app_name, linear_ticket, connection_id, environment)');
+                    .select('*, workflows(app_name, linear_ticket, connection_id, environment)')
+                    .order('started_at', { ascending: false })
+                    .limit(800);
 
                 if (runsError) throw runsError;
 
