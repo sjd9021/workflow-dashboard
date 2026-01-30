@@ -295,6 +295,72 @@
             outline: none;
             border-color: #3498db;
         }
+        .actions-editor {
+            margin-bottom: 15px;
+            padding: 12px;
+            background: #2a2a2a;
+            border-radius: 6px;
+        }
+        .actions-editor-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .actions-editor-header label {
+            font-size: 13px;
+            color: #aaa;
+        }
+        .actions-count {
+            font-size: 12px;
+            color: #888;
+        }
+        .actions-list {
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid #444;
+            border-radius: 4px;
+            background: #1a1a1a;
+        }
+        .action-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 6px 10px;
+            border-bottom: 1px solid #333;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 11px;
+        }
+        .action-item:last-child {
+            border-bottom: none;
+        }
+        .action-item:hover {
+            background: #2a2a2a;
+        }
+        .action-name {
+            color: #e0e0e0;
+            word-break: break-all;
+        }
+        .action-remove {
+            background: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            padding: 2px 8px;
+            cursor: pointer;
+            font-size: 11px;
+            margin-left: 10px;
+            flex-shrink: 0;
+        }
+        .action-remove:hover {
+            background: #c82333;
+        }
+        .actions-empty {
+            padding: 15px;
+            text-align: center;
+            color: #888;
+            font-size: 12px;
+        }
         .run-history {
             display: none;
             padding: 10px 15px;
@@ -569,6 +635,13 @@
                         <option value="production">Production</option>
                         <option value="staging">Staging</option>
                     </select>
+                </div>
+                <div id="actionsEditor" class="actions-editor" style="display: none;">
+                    <div class="actions-editor-header">
+                        <label>Actions to Retry:</label>
+                        <span id="actionsCount" class="actions-count"></span>
+                    </div>
+                    <div id="actionsList" class="actions-list"></div>
                 </div>
                 <div id="scriptOutput" class="script-output"></div>
             </div>
@@ -1176,6 +1249,7 @@
             if (completeRerun) {
                 // Complete rerun - don't pass any actions (already initialized as [])
                 console.log('Complete rerun mode - no action_names will be sent');
+                renderActionsList();
                 updateScriptOutput();
             } else {
                 // Get failed actions from Integrator API via backend proxy (to avoid CORS)
@@ -1205,6 +1279,7 @@
                     }
 
                     currentRetryData.failed_actions = failedActions;
+                    renderActionsList();
                     updateScriptOutput();
                 } catch (error) {
                     console.error('Error fetching failed actions:', error);
@@ -1232,6 +1307,42 @@
         function updateRetryEnvironment(newEnvironment) {
             currentRetryData.environment = newEnvironment;
             updateScriptOutput();
+        }
+
+        function renderActionsList() {
+            const editor = document.getElementById('actionsEditor');
+            const list = document.getElementById('actionsList');
+            const countSpan = document.getElementById('actionsCount');
+            const actions = currentRetryData.failed_actions || [];
+
+            if (currentRetryData.complete_rerun) {
+                editor.style.display = 'none';
+                return;
+            }
+
+            editor.style.display = 'block';
+            countSpan.textContent = `${actions.length} action${actions.length !== 1 ? 's' : ''}`;
+
+            if (actions.length === 0) {
+                list.innerHTML = '<div class="actions-empty">No actions to retry</div>';
+                return;
+            }
+
+            list.innerHTML = actions.map((action, index) => `
+                <div class="action-item">
+                    <span class="action-name">${action}</span>
+                    <button class="action-remove" onclick="removeAction(${index})" title="Remove this action">✕</button>
+                </div>
+            `).join('');
+        }
+
+        function removeAction(index) {
+            if (currentRetryData.failed_actions && index >= 0 && index < currentRetryData.failed_actions.length) {
+                const removed = currentRetryData.failed_actions.splice(index, 1);
+                console.log('Removed action:', removed[0]);
+                renderActionsList();
+                updateScriptOutput();
+            }
         }
 
         function updateScriptOutput() {
