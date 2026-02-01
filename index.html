@@ -71,7 +71,6 @@
         .stat-card.active .number { color: #ffc107; }
         .stat-card.completed .number { color: #28a745; }
         .stat-card.queued .number { color: #17a2b8; }
-        .stat-card.actions .number { color: #9b59b6; }
         .useful-links {
             display: flex;
             gap: 15px;
@@ -541,10 +540,6 @@
             <div class="number" id="completedCount">-</div>
             <div class="label">Completed</div>
         </div>
-        <div class="stat-card actions">
-            <div class="number"><span id="passedCount">-</span>/<span id="totalCount">-</span></div>
-            <div class="label">Actions Passed</div>
-        </div>
     </div>
 
     <div class="useful-links">
@@ -740,8 +735,6 @@
                 // Separate active and completed
                 const active = [];
                 const completed = [];
-                let totalPassed = 0;
-                let totalTested = 0;
 
                 for (const [wfId, wfRuns] of Object.entries(workflows)) {
                     const sortedRuns = wfRuns.sort((a, b) => (a.run_number || 0) - (b.run_number || 0));
@@ -772,8 +765,6 @@
                         .reduce((sum, r) => sum + (r.passed || 0), 0);
                     const total = firstRunTotal;
 
-                    totalTested += total;
-
                     const workflow = {
                         workflow_id: wfId,
                         workflows: latestRun.workflows || {},
@@ -794,7 +785,6 @@
                         active.push(workflow);
                     } else {
                         completed.push(workflow);
-                        totalPassed += aggregatedPassed;
                     }
                 }
 
@@ -808,8 +798,6 @@
                 document.getElementById('activeCount').textContent = active.length;
                 document.getElementById('pendingCount').textContent = queue?.length || 0;
                 document.getElementById('completedCount').textContent = completed.length;
-                document.getElementById('passedCount').textContent = totalPassed;
-                document.getElementById('totalCount').textContent = totalTested;
                 document.getElementById('activeTabCount').textContent = active.length;
                 document.getElementById('pendingTabCount').textContent = queue?.length || 0;
                 document.getElementById('completedTabCount').textContent = completed.length;
