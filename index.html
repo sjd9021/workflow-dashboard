@@ -607,16 +607,26 @@
 
     <div id="failedTools" class="tab-content">
         <div class="failed-tools-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding: 15px; background: #16213e; border-radius: 8px;">
-            <div style="display: flex; gap: 20px;">
-                <span style="color: #ffc107;"><strong id="ftPendingCount">0</strong> pending</span>
-                <span style="color: #17a2b8;"><strong id="ftRetryingCount">0</strong> retrying</span>
-                <span style="color: #28a745;"><strong id="ftCompletedCount">0</strong> completed</span>
+            <div style="display: flex; gap: 25px; align-items: center;">
+                <div style="text-align: center;">
+                    <div style="font-size: 24px; font-weight: bold; color: #ffc107;" id="ftPendingCount">0</div>
+                    <div style="font-size: 11px; color: #888;">Pending</div>
+                </div>
+                <div style="text-align: center;">
+                    <div style="font-size: 24px; font-weight: bold; color: #17a2b8;" id="ftRetryingCount">0</div>
+                    <div style="font-size: 11px; color: #888;">Retrying</div>
+                </div>
+                <div style="text-align: center;">
+                    <div style="font-size: 24px; font-weight: bold; color: #28a745;" id="ftCompletedCount">0</div>
+                    <div style="font-size: 11px; color: #888;">Fixed</div>
+                </div>
             </div>
             <div style="display: flex; gap: 10px; align-items: center;">
-                <input type="text" id="ftSearchInput" placeholder="Search toolkits..." style="padding: 8px 12px; border-radius: 6px; border: 1px solid #333; background: #1a1a2e; color: #fff;" oninput="filterFailedTools()">
-                <select id="ftStatusFilter" style="padding: 8px 12px; border-radius: 6px; border: 1px solid #333; background: #1a1a2e; color: #fff;" onchange="filterFailedTools()">
-                    <option value="all">All</option>
+                <input type="text" id="ftSearchInput" placeholder="Search toolkits..." style="padding: 10px 15px; border-radius: 6px; border: 1px solid #333; background: #1a1a2e; color: #fff; min-width: 200px;" oninput="filterFailedTools()">
+                <select id="ftStatusFilter" style="padding: 10px 15px; border-radius: 6px; border: 1px solid #333; background: #1a1a2e; color: #fff; cursor: pointer;" onchange="filterFailedTools()">
+                    <option value="all">All Toolkits</option>
                     <option value="pending">Has Pending</option>
+                    <option value="active">Currently Active</option>
                     <option value="retrying">Retrying</option>
                 </select>
             </div>
@@ -1112,8 +1122,12 @@
 
         // ==================== FAILED TOOLS FUNCTIONS ====================
 
+        // Store active workflows by toolkit for cross-reference
+        let ftActiveWorkflows = {};
+
         async function fetchFailedTools() {
             try {
+                // Fetch failed tools
                 const { data: tools, error } = await supabaseClient
                     .from('failed_tools')
                     .select('*')
@@ -1121,7 +1135,23 @@
 
                 if (error) throw error;
 
-                // Group by toolkit
+                // Also fetch active workflows to cross-reference
+                const { data: activeRuns } = await supabaseClient
+                    .from('workflow_runs')
+                    .select('*, workflows(app_name, linear_ticket, connection_id)')
+                    .eq('status', 'active');
+
+                // Build map of active workflows by toolkit
+                ftActiveWorkflows = {};
+                for (const run of activeRuns || []) {
+                    const appName = run.workflows?.app_name;
+                    if (appName) {
+                        if (!ftActiveWorkflows[appName]) ftActiveWorkflows[appName] = [];
+                        ftActiveWorkflows[appName].push(run);
+                    }
+                }
+
+                // Group failed tools by toolkit
                 const byToolkit = {};
                 for (const t of tools || []) {
                     if (!byToolkit[t.toolkit]) {
@@ -1133,7 +1163,8 @@
                             pending: 0,
                             retrying: 0,
                             completed: 0,
-                            skipped: 0
+                            skipped: 0,
+                            activeWorkflow: ftActiveWorkflows[t.toolkit]?.[0] || null
                         };
                     }
                     byToolkit[t.toolkit].actions.push(t);
@@ -1170,6 +1201,7 @@
                 if (search && !tk.toolkit.toLowerCase().includes(search)) return false;
                 if (status === 'pending' && tk.pending === 0) return false;
                 if (status === 'retrying' && tk.retrying === 0) return false;
+                if (status === 'active' && !tk.activeWorkflow) return false;
                 return true;
             });
 
@@ -1205,46 +1237,101 @@
         function generateFailedToolCard(tk) {
             const hasConnection = !!tk.connection_id;
             const totalActions = tk.actions.length;
+            const completedCount = tk.completed;
+            const pendingCount = tk.pending;
+            const retryingCount = tk.retrying;
+            const progress = totalActions > 0 ? (completedCount / totalActions * 100) : 0;
 
-            // Build actions preview (first 5)
-            const actionsPreview = tk.actions.slice(0, 5).map(a => {
+            // Check if there's an active workflow for this toolkit
+            const activeWf = tk.activeWorkflow;
+            const isActive = !!activeWf;
+
+            // Determine badge
+            let badgeColor, badgeText;
+            if (isActive) {
+                badgeColor = '#ffc107';
+                badgeText = activeWf.execution_state || 'RUNNING';
+            } else if (pendingCount === 0 && completedCount === totalActions) {
+                badgeColor = '#28a745';
+                badgeText = 'ALL FIXED';
+            } else if (pendingCount > 0) {
+                badgeColor = '#dc3545';
+                badgeText = `${pendingCount} PENDING`;
+            } else {
+                badgeColor = '#6c757d';
+                badgeText = 'SKIPPED';
+            }
+
+            // Linear ticket link
+            const ticketHtml = tk.linear_ticket && tk.linear_ticket !== 'N/A'
+                ? `<a href="https://linear.app/composio/issue/${tk.linear_ticket}" target="_blank" style="color: #17a2b8;">[${tk.linear_ticket}]</a>`
+                : '';
+
+            // Active workflow link
+            const activeLink = isActive
+                ? `<a href="https://usefulagents.com/workflows/${activeWf.workflow_id}?run=${activeWf.run_number}" target="_blank" class="ua-link">View Active Run</a>`
+                : '';
+
+            // Build expandable action list
+            const actionsHtml = tk.actions.map(a => {
                 const statusColor = {
                     'pending': '#ffc107',
                     'retrying': '#17a2b8',
                     'completed': '#28a745',
                     'skipped': '#6c757d'
                 }[a.status] || '#888';
-                return `<div style="font-size: 11px; font-family: monospace; padding: 3px 0; color: #aaa; display: flex; justify-content: space-between;">
-                    <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 280px;">${a.action_name}</span>
-                    <span style="color: ${statusColor}; margin-left: 10px;">${a.status}</span>
-                </div>`;
+                const reasonPreview = a.llm_reason ? a.llm_reason.substring(0, 100) + '...' : '';
+                return `
+                    <div class="action-item" style="background: #0f0f1a; margin-bottom: 4px; border-radius: 4px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span class="action-name" style="font-size: 11px;">${a.action_name}</span>
+                            <span style="color: ${statusColor}; font-size: 10px; padding: 2px 6px; background: ${statusColor}20; border-radius: 3px;">${a.status}</span>
+                        </div>
+                        ${reasonPreview ? `<div style="font-size: 10px; color: #666; margin-top: 4px; font-style: italic;">${reasonPreview}</div>` : ''}
+                    </div>
+                `;
             }).join('');
 
-            const moreActions = totalActions > 5 ? `<div style="font-size: 11px; color: #666; padding: 5px 0;">... and ${totalActions - 5} more</div>` : '';
-
             return `
-                <div class="run-card" style="border-left: 3px solid ${tk.pending > 0 ? '#ffc107' : '#28a745'};">
+                <div class="run-card">
                     <div class="run-header" onclick="toggleFailedToolActions('${tk.toolkit}')">
                         <div class="run-title">
                             <span class="app-name">${tk.toolkit}</span>
-                            <span style="font-size: 12px; color: #888;">${totalActions} actions</span>
+                            <span class="status-badge" style="background: ${badgeColor};">${badgeText}</span>
                         </div>
-                        <div class="run-meta" style="margin-top: 8px;">
-                            ${tk.pending > 0 ? `<span style="color: #ffc107;">${tk.pending} pending</span>` : ''}
-                            ${tk.retrying > 0 ? `<span style="color: #17a2b8;">${tk.retrying} retrying</span>` : ''}
-                            ${tk.completed > 0 ? `<span style="color: #28a745;">${tk.completed} done</span>` : ''}
-                            ${!hasConnection ? `<span style="color: #dc3545;">no connection</span>` : ''}
+                        <div class="run-meta">
+                            ${ticketHtml}
+                            <span>${totalActions} actions</span>
+                            ${activeLink}
                         </div>
                     </div>
-                    <div id="ft-actions-${tk.toolkit}" style="display: none; padding: 10px 15px; border-top: 1px solid #333; background: #1a1a2e;">
-                        ${actionsPreview}
-                        ${moreActions}
-                        ${hasConnection && tk.pending > 0 ? `
-                            <button class="retry-btn" style="margin-top: 10px; width: 100%;" onclick="retryFailedToolkit('${tk.toolkit}', '${tk.connection_id}', '${tk.linear_ticket || ''}')">
-                                Retry ${Math.min(tk.pending, 10)} Pending Actions
+                    <div class="run-summary">
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: ${progress}%;"></div>
+                        </div>
+                        <div class="summary-stats">
+                            <span class="stat passed">${completedCount} fixed</span>
+                            <span class="stat failed">${pendingCount} pending</span>
+                            ${retryingCount > 0 ? `<span class="stat" style="color: #17a2b8;">${retryingCount} retrying</span>` : ''}
+                            <span class="stat">/ ${totalActions} total</span>
+                        </div>
+                    </div>
+                    <div id="ft-actions-${tk.toolkit}" style="display: none; padding: 15px; border-top: 1px solid #333; background: #1a1a2e; max-height: 300px; overflow-y: auto;">
+                        ${actionsHtml}
+                    </div>
+                    ${hasConnection && pendingCount > 0 && !isActive ? `
+                        <div class="retry-section">
+                            <span class="retry-info">${pendingCount} actions need retry</span>
+                            <button class="retry-btn" onclick="showFailedToolsRetryModal('${tk.toolkit}')">
+                                Retry Failed
                             </button>
-                        ` : ''}
-                    </div>
+                        </div>
+                    ` : ''}
+                    ${!hasConnection ? `
+                        <div style="padding: 10px 15px; border-top: 1px solid #333; color: #dc3545; font-size: 12px;">
+                            No connection available for this toolkit
+                        </div>
+                    ` : ''}
                 </div>
             `;
         }
@@ -1261,45 +1348,46 @@
             renderFailedTools();
         }
 
-        async function retryFailedToolkit(toolkit, connectionId, linearTicket) {
+        // Show retry modal with editable action list (reuses main modal)
+        function showFailedToolsRetryModal(toolkit) {
             const tk = allFailedTools.find(t => t.toolkit === toolkit);
             if (!tk) return;
 
             const pendingActions = tk.actions
                 .filter(a => a.status === 'pending')
-                .map(a => a.action_name)
-                .slice(0, 10);
+                .map(a => a.action_name);
 
             if (pendingActions.length === 0) {
                 alert('No pending actions to retry');
                 return;
             }
 
-            if (!confirm(`Retry ${pendingActions.length} actions for ${toolkit}?`)) return;
+            // Use the existing retry modal
+            currentRetryData = {
+                app_name: tk.toolkit,
+                workflow_id: `ft_${tk.toolkit}_${Date.now()}`, // Generate a pseudo workflow_id
+                connection_id: tk.connection_id,
+                linear_ticket: tk.linear_ticket || '',
+                environment: 'production',
+                failed_actions: [...pendingActions],
+                isFailedTools: true // Flag to indicate this is from Failed Tools
+            };
 
-            try {
-                const resp = await fetch('/api/retry-actions', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        toolkit: toolkit,
-                        connection_id: connectionId,
-                        action_names: pendingActions,
-                        linear_ticket: linearTicket || null
-                    })
-                });
+            document.getElementById('modalAppName').textContent = tk.toolkit;
+            document.getElementById('appNameInput').value = tk.toolkit;
+            document.getElementById('connectionIdInput').value = tk.connection_id || '';
+            document.getElementById('linearTicketInput').value = tk.linear_ticket || '';
+            document.getElementById('environmentSelect').value = 'production';
 
-                const result = await resp.json();
+            // Show action editor
+            const actionsEditor = document.getElementById('actionsEditor');
+            actionsEditor.style.display = 'block';
+            renderActionsEditor();
 
-                if (result.success) {
-                    alert(`Started retry for ${toolkit}!\nWorkflow: ${result.workflow_id}`);
-                    setTimeout(() => { fetchFailedTools(); fetchData(); }, 2000);
-                } else {
-                    alert(`Error: ${result.error || 'Unknown error'}`);
-                }
-            } catch (error) {
-                alert(`Error: ${error.message}`);
-            }
+            // Update script
+            updateRetryScript();
+
+            document.getElementById('retryModal').classList.add('active');
         }
 
         // ==================== END FAILED TOOLS ====================
