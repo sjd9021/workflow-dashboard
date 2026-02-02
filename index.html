@@ -579,6 +579,7 @@
         <button class="tab active" data-tab="active" onclick="showTab('active')">Active (<span id="activeTabCount">0</span>)</button>
         <button class="tab" data-tab="pending" onclick="showTab('pending')">Pending (<span id="pendingTabCount">0</span>)</button>
         <button class="tab" data-tab="completed" onclick="showTab('completed')">Completed (<span id="completedTabCount">0</span>)</button>
+        <button class="tab" data-tab="failedTools" onclick="showTab('failedTools')" style="background: #4a1942;">Failed Tools (<span id="failedToolsTabCount">0</span>)</button>
     </div>
 
     <div id="active" class="tab-content active">
@@ -601,6 +602,32 @@
             <button class="pagination-btn" onclick="changePage(-1)" id="prevPageBtn" disabled>&laquo; Prev</button>
             <span class="pagination-info">Page <span id="currentPage">1</span> of <span id="totalPages">1</span></span>
             <button class="pagination-btn" onclick="changePage(1)" id="nextPageBtn" disabled>Next &raquo;</button>
+        </div>
+    </div>
+
+    <div id="failedTools" class="tab-content">
+        <div class="failed-tools-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding: 15px; background: #16213e; border-radius: 8px;">
+            <div style="display: flex; gap: 20px;">
+                <span style="color: #ffc107;"><strong id="ftPendingCount">0</strong> pending</span>
+                <span style="color: #17a2b8;"><strong id="ftRetryingCount">0</strong> retrying</span>
+                <span style="color: #28a745;"><strong id="ftCompletedCount">0</strong> completed</span>
+            </div>
+            <div style="display: flex; gap: 10px; align-items: center;">
+                <input type="text" id="ftSearchInput" placeholder="Search toolkits..." style="padding: 8px 12px; border-radius: 6px; border: 1px solid #333; background: #1a1a2e; color: #fff;" oninput="filterFailedTools()">
+                <select id="ftStatusFilter" style="padding: 8px 12px; border-radius: 6px; border: 1px solid #333; background: #1a1a2e; color: #fff;" onchange="filterFailedTools()">
+                    <option value="all">All</option>
+                    <option value="pending">Has Pending</option>
+                    <option value="retrying">Retrying</option>
+                </select>
+            </div>
+        </div>
+        <div class="runs-grid" id="failedToolsGrid">
+            <div class="loading">Loading...</div>
+        </div>
+        <div class="pagination" id="failedToolsPagination" style="display: none;">
+            <button class="pagination-btn" onclick="changeFailedToolsPage(-1)" id="ftPrevBtn">&laquo; Prev</button>
+            <span class="pagination-info">Page <span id="ftCurrentPage">1</span> of <span id="ftTotalPages">1</span></span>
+            <button class="pagination-btn" onclick="changeFailedToolsPage(1)" id="ftNextBtn">Next &raquo;</button>
         </div>
     </div>
 
@@ -665,6 +692,12 @@
         const ITEMS_PER_PAGE = 50;
         let currentPage = 1;
         let totalPages = 1;
+
+        // Failed tools state
+        let allFailedTools = [];
+        let filteredFailedTools = [];
+        let ftCurrentPage = 1;
+        let ftTotalPages = 1;
 
         // Format timestamp
         function formatTime(ts) {
@@ -1077,6 +1110,200 @@
             }
         }
 
+        // ==================== FAILED TOOLS FUNCTIONS ====================
+
+        async function fetchFailedTools() {
+            try {
+                const { data: tools, error } = await supabaseClient
+                    .from('failed_tools')
+                    .select('*')
+                    .order('toolkit', { ascending: true });
+
+                if (error) throw error;
+
+                // Group by toolkit
+                const byToolkit = {};
+                for (const t of tools || []) {
+                    if (!byToolkit[t.toolkit]) {
+                        byToolkit[t.toolkit] = {
+                            toolkit: t.toolkit,
+                            connection_id: t.connection_id,
+                            linear_ticket: t.linear_ticket,
+                            actions: [],
+                            pending: 0,
+                            retrying: 0,
+                            completed: 0,
+                            skipped: 0
+                        };
+                    }
+                    byToolkit[t.toolkit].actions.push(t);
+                    byToolkit[t.toolkit][t.status]++;
+                }
+
+                allFailedTools = Object.values(byToolkit).sort((a, b) => b.pending - a.pending);
+
+                // Update stats
+                let totalPending = 0, totalRetrying = 0, totalCompleted = 0;
+                for (const tk of allFailedTools) {
+                    totalPending += tk.pending;
+                    totalRetrying += tk.retrying;
+                    totalCompleted += tk.completed;
+                }
+
+                document.getElementById('failedToolsTabCount').textContent = allFailedTools.length;
+                document.getElementById('ftPendingCount').textContent = totalPending;
+                document.getElementById('ftRetryingCount').textContent = totalRetrying;
+                document.getElementById('ftCompletedCount').textContent = totalCompleted;
+
+                filterFailedTools();
+            } catch (error) {
+                console.error('Error fetching failed tools:', error);
+                document.getElementById('failedToolsGrid').innerHTML = '<div class="empty-state">Error loading failed tools</div>';
+            }
+        }
+
+        function filterFailedTools() {
+            const search = document.getElementById('ftSearchInput')?.value?.toLowerCase() || '';
+            const status = document.getElementById('ftStatusFilter')?.value || 'all';
+
+            filteredFailedTools = allFailedTools.filter(tk => {
+                if (search && !tk.toolkit.toLowerCase().includes(search)) return false;
+                if (status === 'pending' && tk.pending === 0) return false;
+                if (status === 'retrying' && tk.retrying === 0) return false;
+                return true;
+            });
+
+            ftCurrentPage = 1;
+            renderFailedTools();
+        }
+
+        function renderFailedTools() {
+            const grid = document.getElementById('failedToolsGrid');
+            ftTotalPages = Math.ceil(filteredFailedTools.length / ITEMS_PER_PAGE);
+
+            const start = (ftCurrentPage - 1) * ITEMS_PER_PAGE;
+            const end = start + ITEMS_PER_PAGE;
+            const pageTools = filteredFailedTools.slice(start, end);
+
+            if (pageTools.length === 0) {
+                grid.innerHTML = '<div class="empty-state">No failed tools found</div>';
+                document.getElementById('failedToolsPagination').style.display = 'none';
+                return;
+            }
+
+            grid.innerHTML = pageTools.map(tk => generateFailedToolCard(tk)).join('');
+
+            // Pagination
+            const pagination = document.getElementById('failedToolsPagination');
+            pagination.style.display = ftTotalPages > 1 ? 'flex' : 'none';
+            document.getElementById('ftCurrentPage').textContent = ftCurrentPage;
+            document.getElementById('ftTotalPages').textContent = ftTotalPages;
+            document.getElementById('ftPrevBtn').disabled = ftCurrentPage <= 1;
+            document.getElementById('ftNextBtn').disabled = ftCurrentPage >= ftTotalPages;
+        }
+
+        function generateFailedToolCard(tk) {
+            const hasConnection = !!tk.connection_id;
+            const totalActions = tk.actions.length;
+
+            // Build actions preview (first 5)
+            const actionsPreview = tk.actions.slice(0, 5).map(a => {
+                const statusColor = {
+                    'pending': '#ffc107',
+                    'retrying': '#17a2b8',
+                    'completed': '#28a745',
+                    'skipped': '#6c757d'
+                }[a.status] || '#888';
+                return `<div style="font-size: 11px; font-family: monospace; padding: 3px 0; color: #aaa; display: flex; justify-content: space-between;">
+                    <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 280px;">${a.action_name}</span>
+                    <span style="color: ${statusColor}; margin-left: 10px;">${a.status}</span>
+                </div>`;
+            }).join('');
+
+            const moreActions = totalActions > 5 ? `<div style="font-size: 11px; color: #666; padding: 5px 0;">... and ${totalActions - 5} more</div>` : '';
+
+            return `
+                <div class="run-card" style="border-left: 3px solid ${tk.pending > 0 ? '#ffc107' : '#28a745'};">
+                    <div class="run-header" onclick="toggleFailedToolActions('${tk.toolkit}')">
+                        <div class="run-title">
+                            <span class="app-name">${tk.toolkit}</span>
+                            <span style="font-size: 12px; color: #888;">${totalActions} actions</span>
+                        </div>
+                        <div class="run-meta" style="margin-top: 8px;">
+                            ${tk.pending > 0 ? `<span style="color: #ffc107;">${tk.pending} pending</span>` : ''}
+                            ${tk.retrying > 0 ? `<span style="color: #17a2b8;">${tk.retrying} retrying</span>` : ''}
+                            ${tk.completed > 0 ? `<span style="color: #28a745;">${tk.completed} done</span>` : ''}
+                            ${!hasConnection ? `<span style="color: #dc3545;">no connection</span>` : ''}
+                        </div>
+                    </div>
+                    <div id="ft-actions-${tk.toolkit}" style="display: none; padding: 10px 15px; border-top: 1px solid #333; background: #1a1a2e;">
+                        ${actionsPreview}
+                        ${moreActions}
+                        ${hasConnection && tk.pending > 0 ? `
+                            <button class="retry-btn" style="margin-top: 10px; width: 100%;" onclick="retryFailedToolkit('${tk.toolkit}', '${tk.connection_id}', '${tk.linear_ticket || ''}')">
+                                Retry ${Math.min(tk.pending, 10)} Pending Actions
+                            </button>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+        }
+
+        function toggleFailedToolActions(toolkit) {
+            const el = document.getElementById(`ft-actions-${toolkit}`);
+            if (el) {
+                el.style.display = el.style.display === 'none' ? 'block' : 'none';
+            }
+        }
+
+        function changeFailedToolsPage(delta) {
+            ftCurrentPage = Math.max(1, Math.min(ftTotalPages, ftCurrentPage + delta));
+            renderFailedTools();
+        }
+
+        async function retryFailedToolkit(toolkit, connectionId, linearTicket) {
+            const tk = allFailedTools.find(t => t.toolkit === toolkit);
+            if (!tk) return;
+
+            const pendingActions = tk.actions
+                .filter(a => a.status === 'pending')
+                .map(a => a.action_name)
+                .slice(0, 10);
+
+            if (pendingActions.length === 0) {
+                alert('No pending actions to retry');
+                return;
+            }
+
+            if (!confirm(`Retry ${pendingActions.length} actions for ${toolkit}?`)) return;
+
+            try {
+                const resp = await fetch('/api/retry-actions', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        toolkit: toolkit,
+                        connection_id: connectionId,
+                        action_names: pendingActions,
+                        linear_ticket: linearTicket || null
+                    })
+                });
+
+                const result = await resp.json();
+
+                if (result.success) {
+                    alert(`Started retry for ${toolkit}!\nWorkflow: ${result.workflow_id}`);
+                    setTimeout(() => { fetchFailedTools(); fetchData(); }, 2000);
+                } else {
+                    alert(`Error: ${result.error || 'Unknown error'}`);
+                }
+            } catch (error) {
+                alert(`Error: ${error.message}`);
+            }
+        }
+
+        // ==================== END FAILED TOOLS ====================
+
         function toggleHistory(workflowId) {
             const history = document.getElementById(`history-${workflowId}`);
             if (history) {
@@ -1471,12 +1698,14 @@
                 showTab(currentTab);
             }
             fetchData();
+            fetchFailedTools();
         }
 
         // Initial load and auto-refresh
         document.addEventListener('DOMContentLoaded', init);
 
         setInterval(fetchData, 10000);
+        setInterval(fetchFailedTools, 30000); // Refresh failed tools every 30s
     </script>
 </body>
 </html>
