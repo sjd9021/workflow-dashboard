@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Failed Tools Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1a1a2e;
+            color: #eee;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid #333;
+        }
+        .header h1 { font-size: 24px; color: #fff; }
+        .header-links { display: flex; gap: 15px; }
+        .header-links a {
+            color: #17a2b8;
+            text-decoration: none;
+            padding: 8px 15px;
+            background: #16213e;
+            border-radius: 6px;
+        }
+        .header-links a:hover { background: #1a2744; }
+        .stats {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
+        .stat-card {
+            background: #16213e;
+            padding: 20px;
+            border-radius: 8px;
+            min-width: 150px;
+        }
+        .stat-card .number {
+            font-size: 36px;
+            font-weight: bold;
+        }
+        .stat-card .label {
+            font-size: 14px;
+            color: #888;
+            margin-top: 5px;
+        }
+        .stat-card.pending .number { color: #ffc107; }
+        .stat-card.retrying .number { color: #17a2b8; }
+        .stat-card.completed .number { color: #28a745; }
+        .stat-card.skipped .number { color: #6c757d; }
+
+        .search-container {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .search-container input, .search-container select {
+            padding: 12px 15px;
+            border-radius: 8px;
+            border: 1px solid #333;
+            background: #16213e;
+            color: #fff;
+            font-size: 14px;
+        }
+        .search-container input { flex: 1; min-width: 300px; max-width: 500px; }
+        .batch-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        .batch-btn {
+            padding: 10px 20px;
+            border-radius: 6px;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+        .batch-btn.primary {
+            background: linear-gradient(135deg, #e74c3c, #c0392b);
+            color: #fff;
+        }
+        .batch-btn.primary:hover {
+            background: linear-gradient(135deg, #c0392b, #a93226);
+        }
+        .batch-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .toolkit-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(450px, 1fr));
+            gap: 15px;
+        }
+        .toolkit-card {
+            background: #16213e;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .toolkit-header {
+            padding: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .toolkit-header:hover { background: #1a2744; }
+        .toolkit-name {
+            font-size: 18px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .toolkit-checkbox {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+        .toolkit-stats {
+            display: flex;
+            gap: 15px;
+            font-size: 13px;
+        }
+        .toolkit-stats .pending { color: #ffc107; }
+        .toolkit-stats .retrying { color: #17a2b8; }
+        .toolkit-stats .completed { color: #28a745; }
+
+        .toolkit-actions {
+            display: none;
+            padding: 15px;
+            border-top: 1px solid #333;
+            background: #1a1a2e;
+        }
+        .toolkit-actions.expanded { display: block; }
+        .action-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 10px;
+            margin-bottom: 5px;
+            background: #16213e;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+        .action-name {
+            font-family: 'Monaco', 'Menlo', monospace;
+            color: #e0e0e0;
+            word-break: break-all;
+            flex: 1;
+        }
+        .action-status {
+            padding: 3px 8px;
+            border-radius: 3px;
+            font-size: 11px;
+            margin-left: 10px;
+        }
+        .action-status.pending { background: #ffc10720; color: #ffc107; }
+        .action-status.retrying { background: #17a2b820; color: #17a2b8; }
+        .action-status.completed { background: #28a74520; color: #28a745; }
+        .action-status.skipped { background: #6c757d20; color: #6c757d; }
+
+        .action-reason {
+            margin-top: 5px;
+            padding: 8px;
+            background: #0f0f1a;
+            border-radius: 4px;
+            font-size: 11px;
+            color: #888;
+            display: none;
+        }
+        .action-reason.expanded { display: block; }
+
+        .retry-btn {
+            background: linear-gradient(135deg, #e74c3c, #c0392b);
+            color: #fff;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        .retry-btn:hover {
+            background: linear-gradient(135deg, #c0392b, #a93226);
+        }
+        .retry-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #888;
+        }
+        .empty-state {
+            padding: 40px;
+            text-align: center;
+            color: #666;
+            background: #16213e;
+            border-radius: 8px;
+        }
+
+        /* Toast notifications */
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 15px 25px;
+            border-radius: 8px;
+            color: #fff;
+            font-weight: 500;
+            z-index: 1000;
+            animation: slideIn 0.3s ease;
+        }
+        .toast.success { background: #28a745; }
+        .toast.error { background: #dc3545; }
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        /* Pagination */
+        .pagination {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 15px;
+            margin-top: 20px;
+            padding: 15px;
+            background: #16213e;
+            border-radius: 8px;
+        }
+        .pagination-btn {
+            background: #0f3460;
+            color: #fff;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .pagination-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🔧 Failed Tools Dashboard</h1>
+        <div class="header-links">
+            <a href="/">← Main Dashboard</a>
+            <a href="https://linear.app/composio/team/PAR/active" target="_blank">Linear</a>
+        </div>
+    </div>
+
+    <div class="stats">
+        <div class="stat-card">
+            <div class="number" id="totalToolkits">-</div>
+            <div class="label">Total Toolkits</div>
+        </div>
+        <div class="stat-card pending">
+            <div class="number" id="pendingCount">-</div>
+            <div class="label">Pending Actions</div>
+        </div>
+        <div class="stat-card retrying">
+            <div class="number" id="retryingCount">-</div>
+            <div class="label">Retrying</div>
+        </div>
+        <div class="stat-card completed">
+            <div class="number" id="completedCount">-</div>
+            <div class="label">Completed</div>
+        </div>
+        <div class="stat-card skipped">
+            <div class="number" id="skippedCount">-</div>
+            <div class="label">Skipped (No Conn)</div>
+        </div>
+    </div>
+
+    <div class="search-container">
+        <input type="text" id="searchInput" placeholder="Search toolkits..." oninput="applyFilters()">
+        <select id="statusFilter" onchange="applyFilters()">
+            <option value="all">All Statuses</option>
+            <option value="has_pending">Has Pending</option>
+            <option value="retrying">Currently Retrying</option>
+            <option value="completed">All Completed</option>
+        </select>
+        <div class="batch-controls">
+            <span style="color:#888">Selected: <span id="selectedCount">0</span></span>
+            <button class="batch-btn primary" id="retrySelectedBtn" onclick="retrySelected()" disabled>
+                Retry Selected
+            </button>
+        </div>
+    </div>
+
+    <div id="toolkitGrid" class="toolkit-grid">
+        <div class="loading">Loading...</div>
+    </div>
+
+    <div class="pagination" id="pagination" style="display: none;">
+        <button class="pagination-btn" onclick="changePage(-1)" id="prevBtn">← Prev</button>
+        <span id="pageInfo">Page 1 of 1</span>
+        <button class="pagination-btn" onclick="changePage(1)" id="nextBtn">Next →</button>
+    </div>
+
+    <script>
+        let SUPABASE_URL = null;
+        let SUPABASE_ANON_KEY = null;
+        let supabaseClient = null;
+
+        let allToolkits = [];
+        let filteredToolkits = [];
+        let selectedToolkits = new Set();
+        let currentPage = 1;
+        const ITEMS_PER_PAGE = 50;
+
+        // Initialize
+        async function init() {
+            try {
+                const configResp = await fetch('/api/config');
+                const config = await configResp.json();
+                SUPABASE_URL = config.supabaseUrl;
+                SUPABASE_ANON_KEY = config.supabaseAnonKey;
+
+                supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                await fetchData();
+                setInterval(fetchData, 30000); // Refresh every 30s
+            } catch (error) {
+                console.error('Init error:', error);
+                document.getElementById('toolkitGrid').innerHTML =
+                    '<div class="empty-state">Error loading data. Check console.</div>';
+            }
+        }
+
+        async function fetchData() {
+            try {
+                const { data: tools, error } = await supabaseClient
+                    .from('failed_tools')
+                    .select('*')
+                    .order('toolkit', { ascending: true });
+
+                if (error) throw error;
+
+                // Group by toolkit
+                const byToolkit = {};
+                for (const t of tools) {
+                    if (!byToolkit[t.toolkit]) {
+                        byToolkit[t.toolkit] = {
+                            toolkit: t.toolkit,
+                            connection_id: t.connection_id,
+                            linear_ticket: t.linear_ticket,
+                            actions: [],
+                            pending: 0,
+                            retrying: 0,
+                            completed: 0,
+                            skipped: 0
+                        };
+                    }
+                    byToolkit[t.toolkit].actions.push(t);
+                    byToolkit[t.toolkit][t.status]++;
+                }
+
+                allToolkits = Object.values(byToolkit).sort((a, b) => b.pending - a.pending);
+
+                // Update stats
+                let totalPending = 0, totalRetrying = 0, totalCompleted = 0, totalSkipped = 0;
+                for (const tk of allToolkits) {
+                    totalPending += tk.pending;
+                    totalRetrying += tk.retrying;
+                    totalCompleted += tk.completed;
+                    totalSkipped += tk.skipped;
+                }
+
+                document.getElementById('totalToolkits').textContent = allToolkits.length;
+                document.getElementById('pendingCount').textContent = totalPending;
+                document.getElementById('retryingCount').textContent = totalRetrying;
+                document.getElementById('completedCount').textContent = totalCompleted;
+                document.getElementById('skippedCount').textContent = totalSkipped;
+
+                applyFilters();
+            } catch (error) {
+                console.error('Fetch error:', error);
+            }
+        }
+
+        function applyFilters() {
+            const search = document.getElementById('searchInput').value.toLowerCase();
+            const status = document.getElementById('statusFilter').value;
+
+            filteredToolkits = allToolkits.filter(tk => {
+                if (search && !tk.toolkit.toLowerCase().includes(search)) return false;
+                if (status === 'has_pending' && tk.pending === 0) return false;
+                if (status === 'retrying' && tk.retrying === 0) return false;
+                if (status === 'completed' && tk.pending > 0) return false;
+                return true;
+            });
+
+            currentPage = 1;
+            renderToolkits();
+        }
+
+        function renderToolkits() {
+            const grid = document.getElementById('toolkitGrid');
+            const start = (currentPage - 1) * ITEMS_PER_PAGE;
+            const end = start + ITEMS_PER_PAGE;
+            const pageToolkits = filteredToolkits.slice(start, end);
+            const totalPages = Math.ceil(filteredToolkits.length / ITEMS_PER_PAGE);
+
+            if (pageToolkits.length === 0) {
+                grid.innerHTML = '<div class="empty-state">No toolkits found matching your filters.</div>';
+                document.getElementById('pagination').style.display = 'none';
+                return;
+            }
+
+            grid.innerHTML = pageToolkits.map(tk => generateToolkitCard(tk)).join('');
+
+            // Update pagination
+            const pagination = document.getElementById('pagination');
+            pagination.style.display = totalPages > 1 ? 'flex' : 'none';
+            document.getElementById('pageInfo').textContent = `Page ${currentPage} of ${totalPages}`;
+            document.getElementById('prevBtn').disabled = currentPage === 1;
+            document.getElementById('nextBtn').disabled = currentPage === totalPages;
+        }
+
+        function generateToolkitCard(tk) {
+            const isSelected = selectedToolkits.has(tk.toolkit);
+            const hasConnection = !!tk.connection_id;
+
+            const actionsHtml = tk.actions.map(a => `
+                <div class="action-item">
+                    <span class="action-name">${a.action_name}</span>
+                    <span class="action-status ${a.status}">${a.status}</span>
+                </div>
+            `).join('');
+
+            return `
+                <div class="toolkit-card" data-toolkit="${tk.toolkit}">
+                    <div class="toolkit-header" onclick="toggleActions('${tk.toolkit}')">
+                        <div class="toolkit-name">
+                            <input type="checkbox" class="toolkit-checkbox"
+                                ${isSelected ? 'checked' : ''}
+                                ${!hasConnection || tk.pending === 0 ? 'disabled' : ''}
+                                onclick="event.stopPropagation(); toggleSelect('${tk.toolkit}')"
+                            >
+                            <span>${tk.toolkit}</span>
+                            ${!hasConnection ? '<span style="color:#dc3545;font-size:11px">(no connection)</span>' : ''}
+                        </div>
+                        <div class="toolkit-stats">
+                            ${tk.pending > 0 ? `<span class="pending">${tk.pending} pending</span>` : ''}
+                            ${tk.retrying > 0 ? `<span class="retrying">${tk.retrying} retrying</span>` : ''}
+                            ${tk.completed > 0 ? `<span class="completed">${tk.completed} done</span>` : ''}
+                        </div>
+                    </div>
+                    <div class="toolkit-actions" id="actions-${tk.toolkit}">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+                            <span style="font-size:13px;color:#888">${tk.actions.length} actions</span>
+                            ${hasConnection && tk.pending > 0 ? `
+                                <button class="retry-btn" onclick="retryToolkit('${tk.toolkit}')">
+                                    Retry ${tk.pending} Pending
+                                </button>
+                            ` : ''}
+                        </div>
+                        ${actionsHtml}
+                    </div>
+                </div>
+            `;
+        }
+
+        function toggleActions(toolkit) {
+            const el = document.getElementById(`actions-${toolkit}`);
+            el.classList.toggle('expanded');
+        }
+
+        function toggleSelect(toolkit) {
+            if (selectedToolkits.has(toolkit)) {
+                selectedToolkits.delete(toolkit);
+            } else {
+                selectedToolkits.add(toolkit);
+            }
+            updateSelectedCount();
+        }
+
+        function updateSelectedCount() {
+            document.getElementById('selectedCount').textContent = selectedToolkits.size;
+            document.getElementById('retrySelectedBtn').disabled = selectedToolkits.size === 0;
+        }
+
+        async function retryToolkit(toolkit) {
+            const tk = allToolkits.find(t => t.toolkit === toolkit);
+            if (!tk || !tk.connection_id) {
+                showToast('No connection ID for this toolkit', 'error');
+                return;
+            }
+
+            const pendingActions = tk.actions
+                .filter(a => a.status === 'pending')
+                .map(a => a.action_name)
+                .slice(0, 10); // Limit to 10 actions
+
+            if (pendingActions.length === 0) {
+                showToast('No pending actions to retry', 'error');
+                return;
+            }
+
+            try {
+                const resp = await fetch('/api/retry-actions', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        toolkit: toolkit,
+                        connection_id: tk.connection_id,
+                        action_names: pendingActions,
+                        linear_ticket: tk.linear_ticket
+                    })
+                });
+
+                const result = await resp.json();
+
+                if (result.success) {
+                    showToast(`Started retry for ${toolkit} (${pendingActions.length} actions)`, 'success');
+                    setTimeout(fetchData, 2000);
+                } else {
+                    showToast(`Error: ${result.error || 'Unknown error'}`, 'error');
+                }
+            } catch (error) {
+                showToast(`Error: ${error.message}`, 'error');
+            }
+        }
+
+        async function retrySelected() {
+            if (selectedToolkits.size === 0) return;
+
+            const btn = document.getElementById('retrySelectedBtn');
+            btn.disabled = true;
+            btn.textContent = 'Retrying...';
+
+            let successCount = 0;
+            let errorCount = 0;
+
+            for (const toolkit of selectedToolkits) {
+                const tk = allToolkits.find(t => t.toolkit === toolkit);
+                if (!tk || !tk.connection_id) continue;
+
+                const pendingActions = tk.actions
+                    .filter(a => a.status === 'pending')
+                    .map(a => a.action_name)
+                    .slice(0, 10);
+
+                if (pendingActions.length === 0) continue;
+
+                try {
+                    const resp = await fetch('/api/retry-actions', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            toolkit: toolkit,
+                            connection_id: tk.connection_id,
+                            action_names: pendingActions,
+                            linear_ticket: tk.linear_ticket
+                        })
+                    });
+
+                    const result = await resp.json();
+                    if (result.success) {
+                        successCount++;
+                    } else {
+                        errorCount++;
+                    }
+                } catch (error) {
+                    errorCount++;
+                }
+
+                // Small delay between requests
+                await new Promise(r => setTimeout(r, 500));
+            }
+
+            selectedToolkits.clear();
+            updateSelectedCount();
+            btn.textContent = 'Retry Selected';
+            btn.disabled = true;
+
+            showToast(`Retried ${successCount} toolkits${errorCount > 0 ? `, ${errorCount} failed` : ''}`,
+                      errorCount > 0 ? 'error' : 'success');
+            setTimeout(fetchData, 2000);
+        }
+
+        function changePage(delta) {
+            const totalPages = Math.ceil(filteredToolkits.length / ITEMS_PER_PAGE);
+            currentPage = Math.max(1, Math.min(totalPages, currentPage + delta));
+            renderToolkits();
+        }
+
+        function showToast(message, type) {
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 4000);
+        }
+
+        // Initialize on load
+        init();
+    </script>
+</body>
+</html>
