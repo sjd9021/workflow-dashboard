@@ -481,15 +481,18 @@
 
         /* Workflow Card */
         .workflow-card {
-            background: var(--bg-card);
-            border: 1px solid var(--border-dim);
+            background: linear-gradient(135deg, var(--bg-card) 0%, var(--bg-elevated) 100%);
+            border: 1px solid var(--border-active);
             position: relative;
             overflow: hidden;
-            transition: all 0.2s;
+            transition: all 0.25s ease;
+            border-radius: 4px;
         }
 
         .workflow-card:hover {
-            border-color: var(--border-active);
+            border-color: var(--accent-cyan);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
         }
 
         .workflow-card::before {
@@ -498,16 +501,16 @@
             top: 0;
             left: 0;
             width: 100%;
-            height: 3px;
+            height: 4px;
         }
 
-        .workflow-card.status-active::before { background: var(--accent-amber); }
-        .workflow-card.status-success::before { background: var(--accent-green); }
-        .workflow-card.status-failed::before { background: var(--accent-pink); }
-        .workflow-card.status-queued::before { background: var(--accent-cyan); }
+        .workflow-card.status-active::before { background: linear-gradient(90deg, var(--accent-amber), var(--accent-amber-dim)); box-shadow: var(--glow-amber); }
+        .workflow-card.status-success::before { background: linear-gradient(90deg, var(--accent-green), var(--accent-green-dim)); }
+        .workflow-card.status-failed::before { background: linear-gradient(90deg, var(--accent-pink), var(--accent-pink-dim)); box-shadow: var(--glow-pink); }
+        .workflow-card.status-queued::before { background: linear-gradient(90deg, var(--accent-cyan), var(--accent-cyan-dim)); }
 
         .card-header {
-            padding: 16px;
+            padding: 20px;
             cursor: pointer;
             transition: background 0.2s;
         }
@@ -519,24 +522,42 @@
         .card-title-row {
             display: flex;
             justify-content: space-between;
-            align-items: center;
-            margin-bottom: 12px;
+            align-items: flex-start;
+            margin-bottom: 16px;
+        }
+
+        .app-name-section {
+            flex: 1;
         }
 
         .app-name {
             font-family: 'Orbitron', sans-serif;
-            font-size: 14px;
-            font-weight: 600;
-            letter-spacing: 1px;
+            font-size: 20px;
+            font-weight: 700;
+            letter-spacing: 2px;
             color: var(--text-primary);
+            text-shadow: 0 0 30px rgba(255, 255, 255, 0.15);
+            margin-bottom: 6px;
+        }
+
+        .run-count {
+            font-size: 11px;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+
+        .run-count span {
+            color: var(--accent-pink);
+            font-weight: 700;
         }
 
         .status-badge {
-            padding: 4px 12px;
-            font-size: 9px;
-            font-weight: 600;
+            padding: 6px 14px;
+            font-size: 10px;
+            font-weight: 700;
             text-transform: uppercase;
             letter-spacing: 1px;
+            flex-shrink: 0;
         }
 
         .status-badge.active {
@@ -553,6 +574,7 @@
         .status-badge.failed {
             background: var(--accent-pink);
             color: var(--bg-primary);
+            box-shadow: var(--glow-pink);
         }
 
         .status-badge.queued {
@@ -560,24 +582,34 @@
             color: var(--bg-primary);
         }
 
-        .run-count {
-            font-size: 10px;
-            color: var(--text-dim);
-            margin-left: 10px;
-        }
-
         .card-meta {
             display: flex;
             flex-wrap: wrap;
-            gap: 12px;
-            font-size: 10px;
+            gap: 16px;
+            font-size: 11px;
             color: var(--text-secondary);
+            padding-top: 14px;
+            border-top: 1px solid var(--border-dim);
+        }
+
+        .meta-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .meta-label {
+            color: var(--text-dim);
+            font-size: 9px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
         }
 
         .card-meta a {
             color: var(--accent-cyan);
             text-decoration: none;
             transition: all 0.2s;
+            font-weight: 500;
         }
 
         .card-meta a:hover {
@@ -586,22 +618,26 @@
 
         .card-meta .ua-link {
             color: var(--accent-pink);
-            background: rgba(255, 0, 102, 0.1);
-            padding: 2px 8px;
+            background: rgba(232, 80, 128, 0.15);
+            padding: 3px 10px;
+            font-weight: 600;
         }
 
         .card-meta .ua-link:hover {
             text-shadow: var(--glow-pink);
+            background: rgba(232, 80, 128, 0.25);
         }
 
         .card-meta .pr-link {
             color: var(--accent-green);
+            font-weight: 500;
         }
 
         .workflow-id {
-            font-size: 9px;
+            font-size: 10px;
             color: var(--text-dim);
             font-family: 'JetBrains Mono', monospace;
+            opacity: 0.8;
         }
 
         /* Progress Section */
@@ -1614,19 +1650,18 @@
             return `<div class="workflow-card status-${statusClass}" data-completed="${completedAt}" data-passed="${passed}" data-total="${total}" data-app="${appName.toLowerCase()}" data-workflow="${workflowId.toLowerCase()}" data-ticket="${linearTicket.toLowerCase()}" data-state="${executionState.toLowerCase()}" data-failed="${failedCount}">
                 <div class="card-header" onclick="toggleHistory('${workflowId}')">
                     <div class="card-title-row">
-                        <span class="app-name">${appName.toUpperCase()}</span>
-                        <div>
-                            <span class="status-badge ${statusClass}">${statusText}</span>
-                            ${runs.length > 1 ? `<span class="run-count">${runs.length} runs</span>` : ''}
+                        <div class="app-name-section">
+                            <div class="app-name">${appName.toUpperCase()}</div>
+                            <div class="run-count"><span>${failedCount}</span> FAILED · ${runs.length} runs</div>
                         </div>
+                        <span class="status-badge ${statusClass}">${statusText}</span>
                     </div>
                     <div class="card-meta">
                         ${ticketHtml}
                         <span class="workflow-id">${workflowId}</span>
-                        <span>Run #${runNumber}</span>
-                        <span>${started}</span>
+                        <span class="meta-item"><span class="meta-label">Run</span> #${runNumber}</span>
+                        <span class="meta-item">${started}</span>
                         ${prHtml}
-                        ${logsLink}
                     </div>
                 </div>
                 <div class="progress-section">
@@ -1655,12 +1690,15 @@
             return `<div class="workflow-card status-queued" data-app="${appName.toLowerCase()}">
                 <div class="card-header">
                     <div class="card-title-row">
-                        <span class="app-name">${appName.toUpperCase()}</span>
+                        <div class="app-name-section">
+                            <div class="app-name">${appName.toUpperCase()}</div>
+                            <div class="run-count">Queued for testing</div>
+                        </div>
                         <span class="status-badge queued">QUEUE #${position}</span>
                     </div>
                     <div class="card-meta">
-                        <span>ENV: ${env}</span>
-                        <span>Testing: ${actionInfo}</span>
+                        <span class="meta-item"><span class="meta-label">Env</span> ${env}</span>
+                        <span class="meta-item"><span class="meta-label">Testing</span> ${actionInfo}</span>
                     </div>
                 </div>
             </div>`;
@@ -1946,12 +1984,14 @@
                 <div class="workflow-card status-${statusClass}">
                     <div class="card-header" onclick="toggleFailedToolActions('${tk.toolkit}')">
                         <div class="card-title-row">
-                            <span class="app-name">${tk.toolkit.toUpperCase()}</span>
+                            <div class="app-name-section">
+                                <div class="app-name">${tk.toolkit.toUpperCase()}</div>
+                                <div class="run-count"><span>${pendingCount}</span> PENDING · ${totalActions} actions</div>
+                            </div>
                             <span class="status-badge ${statusClass}">${statusText}</span>
                         </div>
                         <div class="card-meta">
                             ${ticketHtml}
-                            <span>${totalActions} actions</span>
                             ${activeLink}
                         </div>
                     </div>
