@@ -3,434 +3,870 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Workflow Dashboard</title>
+    <title>CORTEX // Workflow Command Center</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Orbitron:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
     <style>
+        :root {
+            --bg-primary: #050508;
+            --bg-secondary: #0a0a10;
+            --bg-card: #0d0d14;
+            --bg-elevated: #12121c;
+            --border-dim: #1a1a28;
+            --border-active: #2a2a3a;
+
+            --accent-cyan: #00f0ff;
+            --accent-cyan-dim: #00a0aa;
+            --accent-amber: #ffaa00;
+            --accent-amber-dim: #aa7000;
+            --accent-green: #00ff88;
+            --accent-green-dim: #00aa5a;
+            --accent-pink: #ff0066;
+            --accent-pink-dim: #aa0044;
+            --accent-purple: #aa66ff;
+
+            --text-primary: #e8e8f0;
+            --text-secondary: #888898;
+            --text-dim: #555566;
+
+            --glow-cyan: 0 0 20px rgba(0, 240, 255, 0.3);
+            --glow-amber: 0 0 20px rgba(255, 170, 0, 0.3);
+            --glow-green: 0 0 20px rgba(0, 255, 136, 0.3);
+            --glow-pink: 0 0 20px rgba(255, 0, 102, 0.3);
+        }
+
         * {
             box-sizing: border-box;
             margin: 0;
             padding: 0;
         }
+
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-            background: #1a1a2e;
-            color: #eee;
+            font-family: 'JetBrains Mono', monospace;
+            background: var(--bg-primary);
+            color: var(--text-primary);
             min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* Scan line overlay */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            background: repeating-linear-gradient(
+                0deg,
+                transparent,
+                transparent 2px,
+                rgba(0, 0, 0, 0.1) 2px,
+                rgba(0, 0, 0, 0.1) 4px
+            );
+            z-index: 9999;
+        }
+
+        /* Noise texture */
+        body::after {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            opacity: 0.02;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+            z-index: 9998;
+        }
+
+        .container {
+            max-width: 1800px;
+            margin: 0 auto;
             padding: 20px;
         }
+
+        /* Header */
         .header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 30px;
-            padding-bottom: 20px;
-            border-bottom: 1px solid #333;
+            padding: 20px 0;
+            margin-bottom: 25px;
+            border-bottom: 1px solid var(--border-dim);
+            position: relative;
         }
-        .header h1 {
-            font-size: 24px;
-            color: #fff;
+
+        .header::after {
+            content: '';
+            position: absolute;
+            bottom: -1px;
+            left: 0;
+            width: 200px;
+            height: 1px;
+            background: linear-gradient(90deg, var(--accent-cyan), transparent);
         }
-        .header-meta {
-            font-size: 14px;
-            color: #888;
-        }
-        .refresh-indicator {
-            display: inline-block;
-            width: 10px;
-            height: 10px;
-            background: #28a745;
-            border-radius: 50%;
-            margin-right: 8px;
-            animation: pulse 2s infinite;
-        }
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
-        }
-        .stats {
+
+        .logo {
             display: flex;
-            gap: 20px;
-            margin-bottom: 30px;
-            flex-wrap: wrap;
-        }
-        .stat-card {
-            background: #16213e;
-            padding: 20px;
-            border-radius: 8px;
-            min-width: 150px;
-        }
-        .stat-card .number {
-            font-size: 36px;
-            font-weight: bold;
-        }
-        .stat-card .label {
-            font-size: 14px;
-            color: #888;
-            margin-top: 5px;
-        }
-        .stat-card.active .number { color: #ffc107; }
-        .stat-card.completed .number { color: #28a745; }
-        .stat-card.queued .number { color: #17a2b8; }
-        .useful-links {
-            display: flex;
+            align-items: center;
             gap: 15px;
-            margin-bottom: 30px;
-            flex-wrap: wrap;
         }
-        .useful-link {
-            background: #16213e;
-            padding: 10px 20px;
-            border-radius: 8px;
-            color: #17a2b8;
+
+        .logo-icon {
+            width: 40px;
+            height: 40px;
+            border: 2px solid var(--accent-cyan);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+
+        .logo-icon::before {
+            content: '';
+            width: 20px;
+            height: 20px;
+            background: var(--accent-cyan);
+            clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+            animation: pulse-diamond 2s infinite;
+        }
+
+        @keyframes pulse-diamond {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.6; transform: scale(0.9); }
+        }
+
+        .logo h1 {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 22px;
+            font-weight: 700;
+            letter-spacing: 4px;
+            color: var(--text-primary);
+        }
+
+        .logo h1 span {
+            color: var(--accent-cyan);
+        }
+
+        .header-status {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            font-size: 11px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .live-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .live-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--accent-green);
+            box-shadow: var(--glow-green);
+            animation: pulse-glow 1.5s infinite;
+        }
+
+        @keyframes pulse-glow {
+            0%, 100% { opacity: 1; box-shadow: 0 0 10px var(--accent-green); }
+            50% { opacity: 0.5; box-shadow: 0 0 20px var(--accent-green); }
+        }
+
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+
+        .stat-block {
+            background: var(--bg-card);
+            border: 1px solid var(--border-dim);
+            padding: 20px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .stat-block::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 3px;
+            height: 100%;
+        }
+
+        .stat-block.active::before { background: var(--accent-amber); }
+        .stat-block.queued::before { background: var(--accent-cyan); }
+        .stat-block.completed::before { background: var(--accent-green); }
+        .stat-block.failed::before { background: var(--accent-pink); }
+
+        .stat-label {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: var(--text-dim);
+            margin-bottom: 8px;
+        }
+
+        .stat-value {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 36px;
+            font-weight: 700;
+            line-height: 1;
+        }
+
+        .stat-block.active .stat-value { color: var(--accent-amber); text-shadow: var(--glow-amber); }
+        .stat-block.queued .stat-value { color: var(--accent-cyan); text-shadow: var(--glow-cyan); }
+        .stat-block.completed .stat-value { color: var(--accent-green); text-shadow: var(--glow-green); }
+        .stat-block.failed .stat-value { color: var(--accent-pink); text-shadow: var(--glow-pink); }
+
+        .stat-delta {
+            font-size: 10px;
+            color: var(--text-dim);
+            margin-top: 8px;
+        }
+
+        /* Links Bar */
+        .links-bar {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 25px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .link-btn {
+            background: transparent;
+            border: 1px solid var(--border-dim);
+            color: var(--text-secondary);
+            padding: 8px 16px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
             text-decoration: none;
-            font-size: 14px;
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+
+        .link-btn:hover {
+            border-color: var(--accent-cyan);
+            color: var(--accent-cyan);
+            background: rgba(0, 240, 255, 0.05);
+        }
+
+        .config-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-left: auto;
+            padding-left: 20px;
+            border-left: 1px solid var(--border-dim);
+        }
+
+        .config-group label {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-dim);
+        }
+
+        .config-input {
+            width: 50px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-dim);
+            color: var(--accent-cyan);
+            padding: 6px 10px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            text-align: center;
+        }
+
+        .config-input:focus {
+            outline: none;
+            border-color: var(--accent-cyan);
+        }
+
+        .config-btn {
+            background: var(--accent-cyan);
+            border: none;
+            color: var(--bg-primary);
+            padding: 7px 14px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            cursor: pointer;
             transition: all 0.2s;
         }
-        .useful-link:hover {
-            background: #1a2744;
-            color: #fff;
+
+        .config-btn:hover {
+            box-shadow: var(--glow-cyan);
         }
-        .search-container {
-            margin-bottom: 20px;
+
+        /* Search & Filters */
+        .controls-bar {
             display: flex;
             gap: 15px;
-            align-items: center;
+            margin-bottom: 20px;
             flex-wrap: wrap;
+            align-items: center;
         }
-        .search-container input, .search-container select {
-            padding: 12px 15px;
-            border-radius: 8px;
-            border: 1px solid #333;
-            background: #16213e;
-            color: #fff;
-            font-size: 14px;
-        }
-        .search-container input {
+
+        .search-box {
             flex: 1;
             min-width: 300px;
             max-width: 500px;
+            position: relative;
         }
-        .search-container select {
-            cursor: pointer;
+
+        .search-box input {
+            width: 100%;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-dim);
+            color: var(--text-primary);
+            padding: 12px 16px;
+            padding-left: 40px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
         }
-        .queue-config {
-            display: flex;
-            align-items: center;
-            gap: 10px;
+
+        .search-box input:focus {
+            outline: none;
+            border-color: var(--accent-cyan);
         }
-        .queue-config input {
-            width: 50px;
-            padding: 5px;
-        }
-        .queue-config button {
-            padding: 5px 12px;
-            border-radius: 4px;
-            border: none;
-            background: #28a745;
-            color: #fff;
-            cursor: pointer;
-            font-size: 13px;
-        }
-        .tabs {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 20px;
-        }
-        .tab {
-            padding: 10px 20px;
-            background: #16213e;
-            border: none;
-            border-radius: 8px;
-            color: #888;
-            cursor: pointer;
+
+        .search-box::before {
+            content: '>';
+            position: absolute;
+            left: 16px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--accent-cyan);
             font-size: 14px;
+        }
+
+        .search-box input::placeholder {
+            color: var(--text-dim);
+        }
+
+        .filter-select {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-dim);
+            color: var(--text-primary);
+            padding: 12px 16px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            cursor: pointer;
+            min-width: 140px;
+        }
+
+        .filter-select:focus {
+            outline: none;
+            border-color: var(--accent-cyan);
+        }
+
+        .result-count {
+            font-size: 11px;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        /* Tabs */
+        .tabs-container {
+            display: flex;
+            gap: 2px;
+            margin-bottom: 20px;
+            border-bottom: 1px solid var(--border-dim);
+        }
+
+        .tab-btn {
+            background: transparent;
+            border: none;
+            border-bottom: 2px solid transparent;
+            color: var(--text-secondary);
+            padding: 12px 24px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            cursor: pointer;
             transition: all 0.2s;
+            position: relative;
         }
-        .tab:hover {
-            background: #1a2744;
+
+        .tab-btn:hover {
+            color: var(--text-primary);
+            background: var(--bg-secondary);
         }
-        .tab.active {
-            background: #0e4429;
-            color: #fff;
+
+        .tab-btn.active {
+            color: var(--accent-cyan);
+            border-bottom-color: var(--accent-cyan);
         }
+
+        .tab-btn .count {
+            background: var(--bg-elevated);
+            padding: 2px 8px;
+            margin-left: 8px;
+            font-size: 10px;
+        }
+
+        .tab-btn.active .count {
+            background: var(--accent-cyan);
+            color: var(--bg-primary);
+        }
+
+        .tab-btn.failed-tools {
+            color: var(--accent-pink);
+        }
+
+        .tab-btn.failed-tools.active {
+            border-bottom-color: var(--accent-pink);
+        }
+
+        .tab-btn.failed-tools .count {
+            background: var(--accent-pink);
+            color: var(--bg-primary);
+        }
+
+        /* Tab Content */
         .tab-content {
             display: none;
-            max-height: calc(100vh - 350px);
+            max-height: calc(100vh - 420px);
             overflow-y: auto;
-            padding-right: 10px;
         }
+
         .tab-content.active {
             display: block;
         }
-        .runs-grid {
+
+        /* Custom scrollbar */
+        .tab-content::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .tab-content::-webkit-scrollbar-track {
+            background: var(--bg-secondary);
+        }
+
+        .tab-content::-webkit-scrollbar-thumb {
+            background: var(--border-active);
+        }
+
+        .tab-content::-webkit-scrollbar-thumb:hover {
+            background: var(--accent-cyan);
+        }
+
+        /* Workflow Grid */
+        .workflow-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
             gap: 15px;
         }
-        .run-card {
-            background: #16213e;
-            border-radius: 8px;
+
+        /* Workflow Card */
+        .workflow-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-dim);
+            position: relative;
             overflow: hidden;
+            transition: all 0.2s;
         }
-        .run-header {
-            padding: 15px;
+
+        .workflow-card:hover {
+            border-color: var(--border-active);
+        }
+
+        .workflow-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 3px;
+        }
+
+        .workflow-card.status-active::before { background: var(--accent-amber); }
+        .workflow-card.status-success::before { background: var(--accent-green); }
+        .workflow-card.status-failed::before { background: var(--accent-pink); }
+        .workflow-card.status-queued::before { background: var(--accent-cyan); }
+
+        .card-header {
+            padding: 16px;
             cursor: pointer;
             transition: background 0.2s;
         }
-        .run-header:hover {
-            background: #1a2744;
+
+        .card-header:hover {
+            background: var(--bg-elevated);
         }
-        .run-title {
+
+        .card-title-row {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 10px;
+            margin-bottom: 12px;
         }
+
         .app-name {
-            font-size: 18px;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 14px;
             font-weight: 600;
+            letter-spacing: 1px;
+            color: var(--text-primary);
         }
+
         .status-badge {
             padding: 4px 12px;
-            border-radius: 12px;
-            font-size: 12px;
-            font-weight: 500;
-            color: #000;
+            font-size: 9px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
         }
-        .run-meta {
+
+        .status-badge.active {
+            background: var(--accent-amber);
+            color: var(--bg-primary);
+            box-shadow: var(--glow-amber);
+        }
+
+        .status-badge.success {
+            background: var(--accent-green);
+            color: var(--bg-primary);
+        }
+
+        .status-badge.failed {
+            background: var(--accent-pink);
+            color: var(--bg-primary);
+        }
+
+        .status-badge.queued {
+            background: var(--accent-cyan);
+            color: var(--bg-primary);
+        }
+
+        .run-count {
+            font-size: 10px;
+            color: var(--text-dim);
+            margin-left: 10px;
+        }
+
+        .card-meta {
             display: flex;
-            gap: 15px;
-            font-size: 13px;
-            color: #888;
             flex-wrap: wrap;
+            gap: 12px;
+            font-size: 10px;
+            color: var(--text-secondary);
         }
-        .run-meta a {
-            color: #17a2b8;
+
+        .card-meta a {
+            color: var(--accent-cyan);
             text-decoration: none;
+            transition: all 0.2s;
         }
-        .run-meta a:hover {
-            text-decoration: underline;
+
+        .card-meta a:hover {
+            text-shadow: var(--glow-cyan);
         }
-        .run-summary {
-            padding: 10px 15px;
-            border-top: 1px solid #333;
+
+        .card-meta .ua-link {
+            color: var(--accent-pink);
+            background: rgba(255, 0, 102, 0.1);
+            padding: 2px 8px;
         }
-        .progress-bar {
-            height: 6px;
-            background: #333;
-            border-radius: 3px;
+
+        .card-meta .ua-link:hover {
+            text-shadow: var(--glow-pink);
+        }
+
+        .card-meta .pr-link {
+            color: var(--accent-green);
+        }
+
+        .workflow-id {
+            font-size: 9px;
+            color: var(--text-dim);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* Progress Section */
+        .progress-section {
+            padding: 12px 16px;
+            border-top: 1px solid var(--border-dim);
+            background: var(--bg-secondary);
+        }
+
+        .progress-bar-container {
+            height: 4px;
+            background: var(--border-dim);
+            margin-bottom: 10px;
+            position: relative;
             overflow: hidden;
-            margin-bottom: 8px;
         }
-        .progress-fill {
+
+        .progress-bar-fill {
             height: 100%;
-            background: linear-gradient(90deg, #28a745, #20c997);
-            border-radius: 3px;
-            transition: width 0.3s ease;
+            background: linear-gradient(90deg, var(--accent-green), var(--accent-cyan));
+            transition: width 0.3s;
+            position: relative;
         }
-        .summary-stats {
+
+        .progress-bar-fill::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 20px;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3));
+            animation: shimmer 1.5s infinite;
+        }
+
+        @keyframes shimmer {
+            0% { transform: translateX(-20px); }
+            100% { transform: translateX(20px); }
+        }
+
+        .progress-stats {
             display: flex;
-            gap: 15px;
-            font-size: 12px;
+            gap: 20px;
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
         }
-        .summary-stats .stat { color: #888; }
-        .summary-stats .stat.passed { color: #28a745; }
-        .summary-stats .stat.failed { color: #dc3545; }
+
+        .progress-stats .passed { color: var(--accent-green); }
+        .progress-stats .failed { color: var(--accent-pink); }
+        .progress-stats .total { color: var(--text-dim); }
+
+        /* Retry Section */
         .retry-section {
-            padding: 12px 15px;
-            border-top: 1px solid #333;
+            padding: 12px 16px;
+            border-top: 1px solid var(--border-dim);
             display: flex;
             justify-content: space-between;
             align-items: center;
+            background: rgba(255, 0, 102, 0.03);
         }
+
         .retry-info {
-            font-size: 13px;
-            color: #dc3545;
+            font-size: 11px;
+            color: var(--accent-pink);
         }
+
         .retry-btn {
-            background: linear-gradient(135deg, #e74c3c, #c0392b);
-            color: #fff;
+            background: linear-gradient(135deg, var(--accent-pink), var(--accent-pink-dim));
             border: none;
+            color: white;
             padding: 10px 20px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 13px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
             font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            cursor: pointer;
             transition: all 0.2s;
             display: flex;
             align-items: center;
             gap: 8px;
         }
+
         .retry-btn:hover {
-            background: linear-gradient(135deg, #c0392b, #a93226);
+            box-shadow: var(--glow-pink);
             transform: translateY(-1px);
-            box-shadow: 0 4px 12px rgba(231, 76, 60, 0.3);
         }
-        .retry-config {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            margin-bottom: 15px;
-            padding: 12px;
-            background: #2a2a2a;
-            border-radius: 6px;
+
+        .retry-btn.rerun {
+            background: linear-gradient(135deg, var(--accent-amber), var(--accent-amber-dim));
         }
-        .retry-config label {
-            font-size: 13px;
-            color: #aaa;
-            white-space: nowrap;
+
+        .retry-btn.rerun:hover {
+            box-shadow: var(--glow-amber);
         }
-        .retry-input {
-            flex: 1;
-            padding: 8px 12px;
-            border: 1px solid #444;
-            border-radius: 4px;
-            background: #1a1a1a;
-            color: #fff;
-            font-family: 'Monaco', 'Menlo', monospace;
-            font-size: 13px;
-        }
-        .retry-input:focus {
-            outline: none;
-            border-color: #3498db;
-        }
-        .actions-editor {
-            margin-bottom: 15px;
-            padding: 12px;
-            background: #2a2a2a;
-            border-radius: 6px;
-        }
-        .actions-editor-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 10px;
-        }
-        .actions-editor-header label {
-            font-size: 13px;
-            color: #aaa;
-        }
-        .actions-count {
-            font-size: 12px;
-            color: #888;
-        }
-        .actions-list {
+
+        /* History Section */
+        .history-section {
+            display: none;
+            padding: 12px 16px;
+            border-top: 1px solid var(--border-dim);
+            background: var(--bg-primary);
             max-height: 200px;
             overflow-y: auto;
-            border: 1px solid #444;
-            border-radius: 4px;
-            background: #1a1a1a;
         }
-        .action-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 6px 10px;
-            border-bottom: 1px solid #333;
-            font-family: 'Monaco', 'Menlo', monospace;
-            font-size: 11px;
+
+        .history-section.expanded {
+            display: block;
         }
-        .action-item:last-child {
-            border-bottom: none;
+
+        .history-title {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: var(--text-dim);
+            margin-bottom: 12px;
         }
-        .action-item:hover {
-            background: #2a2a2a;
-        }
-        .action-name {
-            color: #e0e0e0;
-            word-break: break-all;
-        }
-        .action-remove {
-            background: #dc3545;
-            color: white;
-            border: none;
-            border-radius: 3px;
-            padding: 2px 8px;
-            cursor: pointer;
-            font-size: 11px;
-            margin-left: 10px;
-            flex-shrink: 0;
-        }
-        .action-remove:hover {
-            background: #c82333;
-        }
-        .actions-empty {
-            padding: 15px;
-            text-align: center;
-            color: #888;
-            font-size: 12px;
-        }
-        .run-history {
-            display: none;
-            padding: 10px 15px;
-            background: #1a1a2e;
-            border-top: 1px solid #333;
-        }
+
         .history-row {
             display: flex;
             justify-content: space-between;
-            padding: 5px 0;
-            border-bottom: 1px solid #333;
-            font-size: 12px;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid var(--border-dim);
+            font-size: 10px;
         }
+
         .history-row:last-child {
             border-bottom: none;
         }
+
+        .history-run {
+            color: var(--text-secondary);
+        }
+
+        .history-badge {
+            background: var(--accent-amber);
+            color: var(--bg-primary);
+            padding: 2px 6px;
+            font-size: 8px;
+            margin-left: 8px;
+            text-transform: uppercase;
+        }
+
+        .history-stats {
+            color: var(--text-dim);
+        }
+
+        .history-date {
+            color: var(--text-dim);
+        }
+
+        .history-link {
+            color: var(--accent-cyan);
+            text-decoration: none;
+        }
+
+        .history-link:hover {
+            text-shadow: var(--glow-cyan);
+        }
+
+        /* Empty State */
         .empty-state {
-            padding: 40px;
+            padding: 60px;
             text-align: center;
-            color: #666;
-            background: #16213e;
-            border-radius: 8px;
+            color: var(--text-dim);
+            background: var(--bg-card);
+            border: 1px dashed var(--border-dim);
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
         }
-        .ua-link {
-            color: #ff6b6b !important;
-            font-weight: 500;
-            background: rgba(255, 107, 107, 0.1);
-            padding: 2px 8px;
-            border-radius: 4px;
-        }
-        .pr-link {
-            color: #28a745 !important;
-            font-weight: 500;
-        }
-        /* Pagination styles */
+
+        /* Pagination */
         .pagination {
             display: flex;
             justify-content: center;
             align-items: center;
-            gap: 15px;
+            gap: 20px;
             margin-top: 20px;
             padding: 15px;
-            background: #16213e;
-            border-radius: 8px;
+            background: var(--bg-card);
+            border: 1px solid var(--border-dim);
         }
+
         .pagination-btn {
-            background: #0f3460;
-            color: #fff;
-            border: none;
+            background: transparent;
+            border: 1px solid var(--border-dim);
+            color: var(--text-secondary);
             padding: 10px 20px;
-            border-radius: 5px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
             cursor: pointer;
-            font-size: 14px;
             transition: all 0.2s;
+            text-transform: uppercase;
+            letter-spacing: 1px;
         }
+
         .pagination-btn:hover:not(:disabled) {
-            background: #1a4a7a;
+            border-color: var(--accent-cyan);
+            color: var(--accent-cyan);
         }
+
         .pagination-btn:disabled {
-            opacity: 0.5;
+            opacity: 0.3;
             cursor: not-allowed;
         }
+
         .pagination-info {
-            color: #888;
-            font-size: 14px;
+            font-size: 11px;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 1px;
         }
+
         .pagination-info span {
-            color: #fff;
-            font-weight: bold;
+            color: var(--accent-cyan);
         }
-        /* Modal styles */
+
+        /* Failed Tools Section */
+        .failed-tools-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px;
+            margin-bottom: 20px;
+            background: var(--bg-card);
+            border: 1px solid var(--border-dim);
+            border-left: 3px solid var(--accent-pink);
+        }
+
+        .ft-stats {
+            display: flex;
+            gap: 30px;
+        }
+
+        .ft-stat {
+            text-align: center;
+        }
+
+        .ft-stat-value {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 24px;
+            font-weight: 600;
+        }
+
+        .ft-stat-value.pending { color: var(--accent-amber); }
+        .ft-stat-value.retrying { color: var(--accent-cyan); }
+        .ft-stat-value.fixed { color: var(--accent-green); }
+
+        .ft-stat-label {
+            font-size: 9px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-dim);
+            margin-top: 4px;
+        }
+
+        .ft-filters {
+            display: flex;
+            gap: 10px;
+        }
+
+        /* Modal */
         .modal-overlay {
             display: none;
             position: fixed;
@@ -438,206 +874,458 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0, 0, 0, 0.8);
-            z-index: 1000;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 10000;
             justify-content: center;
             align-items: center;
+            backdrop-filter: blur(4px);
         }
+
         .modal-overlay.active {
             display: flex;
         }
+
         .modal {
-            background: #1a1a2e;
-            border-radius: 12px;
+            background: var(--bg-card);
+            border: 1px solid var(--border-dim);
             max-width: 900px;
             width: 90%;
-            max-height: 80vh;
+            max-height: 85vh;
             overflow: hidden;
-            border: 1px solid #333;
         }
+
+        .modal::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 3px;
+            background: linear-gradient(90deg, var(--accent-pink), var(--accent-amber));
+        }
+
         .modal-header {
             padding: 20px;
-            border-bottom: 1px solid #333;
+            border-bottom: 1px solid var(--border-dim);
             display: flex;
             justify-content: space-between;
             align-items: center;
         }
+
         .modal-header h2 {
-            color: #fff;
-            font-size: 18px;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 14px;
+            font-weight: 600;
+            letter-spacing: 2px;
+            color: var(--text-primary);
         }
+
         .modal-close {
             background: none;
             border: none;
-            color: #888;
+            color: var(--text-dim);
             font-size: 24px;
             cursor: pointer;
+            transition: color 0.2s;
+            line-height: 1;
         }
+
+        .modal-close:hover {
+            color: var(--accent-pink);
+        }
+
         .modal-body {
             padding: 20px;
-            max-height: 60vh;
+            max-height: 55vh;
             overflow-y: auto;
         }
-        .script-output {
-            background: #0f0f1a;
-            padding: 15px;
-            border-radius: 8px;
-            font-family: 'Monaco', 'Menlo', monospace;
+
+        .modal-config {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 15px;
+            padding: 12px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-dim);
+        }
+
+        .modal-config label {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-dim);
+            white-space: nowrap;
+            min-width: 100px;
+        }
+
+        .modal-input {
+            flex: 1;
+            background: var(--bg-primary);
+            border: 1px solid var(--border-dim);
+            color: var(--text-primary);
+            padding: 10px 14px;
+            font-family: 'JetBrains Mono', monospace;
             font-size: 12px;
+        }
+
+        .modal-input:focus {
+            outline: none;
+            border-color: var(--accent-cyan);
+        }
+
+        .modal-select {
+            background: var(--bg-primary);
+            border: 1px solid var(--border-dim);
+            color: var(--text-primary);
+            padding: 10px 14px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            cursor: pointer;
+        }
+
+        .modal-select:focus {
+            outline: none;
+            border-color: var(--accent-cyan);
+        }
+
+        .actions-editor {
+            margin-bottom: 15px;
+            padding: 12px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-dim);
+        }
+
+        .actions-editor-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .actions-editor-header label {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-dim);
+        }
+
+        .actions-count {
+            font-size: 10px;
+            color: var(--accent-cyan);
+        }
+
+        .actions-list {
+            max-height: 180px;
+            overflow-y: auto;
+            border: 1px solid var(--border-dim);
+            background: var(--bg-primary);
+        }
+
+        .action-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 12px;
+            border-bottom: 1px solid var(--border-dim);
+            font-size: 11px;
+        }
+
+        .action-item:last-child {
+            border-bottom: none;
+        }
+
+        .action-item:hover {
+            background: var(--bg-secondary);
+        }
+
+        .action-name {
+            color: var(--text-secondary);
+            word-break: break-all;
+        }
+
+        .action-remove {
+            background: var(--accent-pink);
+            color: white;
+            border: none;
+            padding: 4px 10px;
+            font-size: 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .action-remove:hover {
+            box-shadow: var(--glow-pink);
+        }
+
+        .script-output {
+            background: var(--bg-primary);
+            border: 1px solid var(--border-dim);
+            padding: 16px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
             white-space: pre-wrap;
             word-break: break-all;
-            color: #00ff00;
+            color: var(--accent-green);
+            max-height: 250px;
+            overflow-y: auto;
         }
+
         .modal-footer {
-            padding: 15px 20px;
-            border-top: 1px solid #333;
+            padding: 16px 20px;
+            border-top: 1px solid var(--border-dim);
             display: flex;
             gap: 10px;
             justify-content: flex-end;
         }
+
         .modal-btn {
-            padding: 10px 20px;
-            border-radius: 6px;
-            border: none;
+            padding: 12px 24px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
             cursor: pointer;
-            font-size: 14px;
-            font-weight: 500;
+            transition: all 0.2s;
+            border: none;
         }
+
         .modal-btn.primary {
-            background: #28a745;
-            color: #fff;
+            background: var(--accent-green);
+            color: var(--bg-primary);
         }
+
+        .modal-btn.primary:hover {
+            box-shadow: var(--glow-green);
+        }
+
         .modal-btn.secondary {
-            background: #6c757d;
-            color: #fff;
+            background: var(--bg-elevated);
+            color: var(--text-secondary);
+            border: 1px solid var(--border-dim);
         }
+
+        .modal-btn.secondary:hover {
+            border-color: var(--accent-cyan);
+            color: var(--accent-cyan);
+        }
+
+        /* Loading */
         .loading {
             text-align: center;
-            padding: 40px;
-            color: #888;
+            padding: 60px;
+            color: var(--text-dim);
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        .loading::after {
+            content: '';
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid var(--border-dim);
+            border-top-color: var(--accent-cyan);
+            border-radius: 0;
+            animation: spin 0.8s linear infinite;
+            margin-left: 15px;
+            vertical-align: middle;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Grid background effect */
+        .grid-bg {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: -1;
+            background-image:
+                linear-gradient(rgba(0, 240, 255, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 240, 255, 0.03) 1px, transparent 1px);
+            background-size: 50px 50px;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .workflow-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .header {
+                flex-direction: column;
+                gap: 15px;
+                text-align: center;
+            }
+
+            .links-bar {
+                justify-content: center;
+            }
+
+            .config-group {
+                margin-left: 0;
+                padding-left: 0;
+                border-left: none;
+                padding-top: 15px;
+                border-top: 1px solid var(--border-dim);
+                width: 100%;
+                justify-content: center;
+            }
         }
     </style>
 </head>
 <body>
-    <div class="header">
-        <h1>Test-and-Fix Workflow Dashboard</h1>
-        <div class="header-meta">
-            <span class="refresh-indicator"></span>
-            Auto-refreshes every 10s | Last updated: <span id="lastUpdated">Loading...</span>
-        </div>
-    </div>
+    <div class="grid-bg"></div>
 
-    <div class="stats">
-        <div class="stat-card active">
-            <div class="number" id="activeCount">-</div>
-            <div class="label">Active Workflows</div>
-        </div>
-        <div class="stat-card queued">
-            <div class="number" id="pendingCount">-</div>
-            <div class="label">Pending</div>
-        </div>
-        <div class="stat-card completed">
-            <div class="number" id="completedCount">-</div>
-            <div class="label">Completed</div>
-        </div>
-    </div>
-
-    <div class="useful-links">
-        <a href="https://linear.app/composio/team/PAR/active" target="_blank" class="useful-link">Linear Partnerships</a>
-        <a href="https://github.com/ComposioHQ/composio/pulls?q=is%3Apr+is%3Aopen+cortex%2Ffix" target="_blank" class="useful-link">Open PRs (cortex/fix)</a>
-        <a href="https://docs.google.com/spreadsheets/d/1SxDwzMqpS8y-5we-kvzcaTDvWwHacU5QbPT0FIvTM9U/edit?gid=847538700" target="_blank" class="useful-link">Connections Sheet</a>
-        <a href="https://integrations-api.composio.io/docs" target="_blank" class="useful-link">Workflow API Docs</a>
-        <div class="queue-config">
-            <span style="color:#888;font-size:14px;">Max concurrent:</span>
-            <input type="number" id="maxConcurrent" value="12" min="1" max="20">
-            <button onclick="updateMaxConcurrent()">Update</button>
-        </div>
-    </div>
-
-    <div class="search-container">
-        <input type="text" id="searchInput" placeholder="Search by app name, workflow ID, or ticket... (Press / to focus)" oninput="applyFilters()">
-        <select id="statusFilter" onchange="applyFilters()">
-            <option value="all">All Statuses</option>
-            <option value="success">Success Only</option>
-            <option value="failed">Failed Only</option>
-            <option value="auth_issue">Auth Issues</option>
-            <option value="has_failures">Has Failed Actions</option>
-            <option value="perfect">100% Pass Rate</option>
-        </select>
-        <select id="sortFilter" onchange="applyFilters()">
-            <option value="time_desc" selected>Most Recent</option>
-            <option value="time_asc">Oldest First</option>
-            <option value="passed_desc">Most Passed</option>
-            <option value="passed_asc">Least Passed</option>
-            <option value="rate_desc">Best Pass Rate</option>
-            <option value="rate_asc">Worst Pass Rate</option>
-        </select>
-        <span id="searchCount" style="color: #888; font-size: 14px;"></span>
-    </div>
-
-    <div class="tabs">
-        <button class="tab active" data-tab="active" onclick="showTab('active')">Active (<span id="activeTabCount">0</span>)</button>
-        <button class="tab" data-tab="pending" onclick="showTab('pending')">Pending (<span id="pendingTabCount">0</span>)</button>
-        <button class="tab" data-tab="completed" onclick="showTab('completed')">Completed (<span id="completedTabCount">0</span>)</button>
-        <button class="tab" data-tab="failedTools" onclick="showTab('failedTools')" style="background: #4a1942;">Failed Tools (<span id="failedToolsTabCount">0</span>)</button>
-    </div>
-
-    <div id="active" class="tab-content active">
-        <div class="runs-grid" id="activeGrid">
-            <div class="loading">Loading...</div>
-        </div>
-    </div>
-
-    <div id="pending" class="tab-content">
-        <div class="runs-grid" id="pendingGrid">
-            <div class="loading">Loading...</div>
-        </div>
-    </div>
-
-    <div id="completed" class="tab-content">
-        <div class="runs-grid" id="completedGrid">
-            <div class="loading">Loading...</div>
-        </div>
-        <div class="pagination" id="completedPagination">
-            <button class="pagination-btn" onclick="changePage(-1)" id="prevPageBtn" disabled>&laquo; Prev</button>
-            <span class="pagination-info">Page <span id="currentPage">1</span> of <span id="totalPages">1</span></span>
-            <button class="pagination-btn" onclick="changePage(1)" id="nextPageBtn" disabled>Next &raquo;</button>
-        </div>
-    </div>
-
-    <div id="failedTools" class="tab-content">
-        <div class="failed-tools-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding: 15px; background: #16213e; border-radius: 8px;">
-            <div style="display: flex; gap: 25px; align-items: center;">
-                <div style="text-align: center;">
-                    <div style="font-size: 24px; font-weight: bold; color: #ffc107;" id="ftPendingCount">0</div>
-                    <div style="font-size: 11px; color: #888;">Pending</div>
-                </div>
-                <div style="text-align: center;">
-                    <div style="font-size: 24px; font-weight: bold; color: #17a2b8;" id="ftRetryingCount">0</div>
-                    <div style="font-size: 11px; color: #888;">Retrying</div>
-                </div>
-                <div style="text-align: center;">
-                    <div style="font-size: 24px; font-weight: bold; color: #28a745;" id="ftCompletedCount">0</div>
-                    <div style="font-size: 11px; color: #888;">Fixed</div>
-                </div>
+    <div class="container">
+        <header class="header">
+            <div class="logo">
+                <div class="logo-icon"></div>
+                <h1><span>CORTEX</span> // COMMAND</h1>
             </div>
-            <div style="display: flex; gap: 10px; align-items: center;">
-                <input type="text" id="ftSearchInput" placeholder="Search toolkits..." style="padding: 10px 15px; border-radius: 6px; border: 1px solid #333; background: #1a1a2e; color: #fff; min-width: 200px;" oninput="filterFailedTools()">
-                <select id="ftStatusFilter" style="padding: 10px 15px; border-radius: 6px; border: 1px solid #333; background: #1a1a2e; color: #fff; cursor: pointer;" onchange="filterFailedTools()">
-                    <option value="all">All Toolkits</option>
-                    <option value="pending">Has Pending</option>
-                    <option value="active">Currently Active</option>
-                    <option value="retrying">Retrying</option>
-                </select>
+            <div class="header-status">
+                <div class="live-indicator">
+                    <div class="live-dot"></div>
+                    <span>LIVE</span>
+                </div>
+                <span>REFRESH: 10S</span>
+                <span id="lastUpdated">SYNCING...</span>
+            </div>
+        </header>
+
+        <div class="stats-grid">
+            <div class="stat-block active">
+                <div class="stat-label">Active Workflows</div>
+                <div class="stat-value" id="activeCount">-</div>
+                <div class="stat-delta">Currently executing</div>
+            </div>
+            <div class="stat-block queued">
+                <div class="stat-label">Pending Queue</div>
+                <div class="stat-value" id="pendingCount">-</div>
+                <div class="stat-delta">Awaiting execution</div>
+            </div>
+            <div class="stat-block completed">
+                <div class="stat-label">Completed</div>
+                <div class="stat-value" id="completedCount">-</div>
+                <div class="stat-delta">Total processed</div>
+            </div>
+            <div class="stat-block failed">
+                <div class="stat-label">Failed Tools</div>
+                <div class="stat-value" id="failedToolsCount">-</div>
+                <div class="stat-delta">Require attention</div>
             </div>
         </div>
-        <div class="runs-grid" id="failedToolsGrid">
-            <div class="loading">Loading...</div>
+
+        <div class="links-bar">
+            <a href="https://linear.app/composio/team/PAR/active" target="_blank" class="link-btn">Linear Board</a>
+            <a href="https://github.com/ComposioHQ/composio/pulls?q=is%3Apr+is%3Aopen+cortex%2Ffix" target="_blank" class="link-btn">Open PRs</a>
+            <a href="https://docs.google.com/spreadsheets/d/1SxDwzMqpS8y-5we-kvzcaTDvWwHacU5QbPT0FIvTM9U/edit?gid=847538700" target="_blank" class="link-btn">Connections</a>
+            <a href="https://integrations-api.composio.io/docs" target="_blank" class="link-btn">API Docs</a>
+            <div class="config-group">
+                <label>Max Concurrent:</label>
+                <input type="number" class="config-input" id="maxConcurrent" value="12" min="1" max="20">
+                <button class="config-btn" onclick="updateMaxConcurrent()">Set</button>
+            </div>
         </div>
-        <div class="pagination" id="failedToolsPagination" style="display: none;">
-            <button class="pagination-btn" onclick="changeFailedToolsPage(-1)" id="ftPrevBtn">&laquo; Prev</button>
-            <span class="pagination-info">Page <span id="ftCurrentPage">1</span> of <span id="ftTotalPages">1</span></span>
-            <button class="pagination-btn" onclick="changeFailedToolsPage(1)" id="ftNextBtn">Next &raquo;</button>
+
+        <div class="controls-bar">
+            <div class="search-box">
+                <input type="text" id="searchInput" placeholder="Search workflows... (Press / to focus)" oninput="applyFilters()">
+            </div>
+            <select class="filter-select" id="statusFilter" onchange="applyFilters()">
+                <option value="all">All Status</option>
+                <option value="success">Success</option>
+                <option value="failed">Failed</option>
+                <option value="auth_issue">Auth Issues</option>
+                <option value="has_failures">Has Failures</option>
+                <option value="perfect">100% Pass</option>
+            </select>
+            <select class="filter-select" id="sortFilter" onchange="applyFilters()">
+                <option value="time_desc" selected>Most Recent</option>
+                <option value="time_asc">Oldest First</option>
+                <option value="passed_desc">Most Passed</option>
+                <option value="passed_asc">Least Passed</option>
+                <option value="rate_desc">Best Rate</option>
+                <option value="rate_asc">Worst Rate</option>
+            </select>
+            <span class="result-count" id="searchCount"></span>
+        </div>
+
+        <div class="tabs-container">
+            <button class="tab-btn active" data-tab="active" onclick="showTab('active')">Active<span class="count" id="activeTabCount">0</span></button>
+            <button class="tab-btn" data-tab="pending" onclick="showTab('pending')">Pending<span class="count" id="pendingTabCount">0</span></button>
+            <button class="tab-btn" data-tab="completed" onclick="showTab('completed')">Completed<span class="count" id="completedTabCount">0</span></button>
+            <button class="tab-btn failed-tools" data-tab="failedTools" onclick="showTab('failedTools')">Failed Tools<span class="count" id="failedToolsTabCount">0</span></button>
+        </div>
+
+        <div id="active" class="tab-content active">
+            <div class="workflow-grid" id="activeGrid">
+                <div class="loading">Initializing</div>
+            </div>
+        </div>
+
+        <div id="pending" class="tab-content">
+            <div class="workflow-grid" id="pendingGrid">
+                <div class="loading">Initializing</div>
+            </div>
+        </div>
+
+        <div id="completed" class="tab-content">
+            <div class="workflow-grid" id="completedGrid">
+                <div class="loading">Initializing</div>
+            </div>
+            <div class="pagination" id="completedPagination">
+                <button class="pagination-btn" onclick="changePage(-1)" id="prevPageBtn" disabled>&#x276E; Prev</button>
+                <span class="pagination-info">Page <span id="currentPage">1</span> of <span id="totalPages">1</span></span>
+                <button class="pagination-btn" onclick="changePage(1)" id="nextPageBtn" disabled>Next &#x276F;</button>
+            </div>
+        </div>
+
+        <div id="failedTools" class="tab-content">
+            <div class="failed-tools-header">
+                <div class="ft-stats">
+                    <div class="ft-stat">
+                        <div class="ft-stat-value pending" id="ftPendingCount">0</div>
+                        <div class="ft-stat-label">Pending</div>
+                    </div>
+                    <div class="ft-stat">
+                        <div class="ft-stat-value retrying" id="ftRetryingCount">0</div>
+                        <div class="ft-stat-label">Retrying</div>
+                    </div>
+                    <div class="ft-stat">
+                        <div class="ft-stat-value fixed" id="ftCompletedCount">0</div>
+                        <div class="ft-stat-label">Fixed</div>
+                    </div>
+                </div>
+                <div class="ft-filters">
+                    <input type="text" class="filter-select" id="ftSearchInput" placeholder="Search toolkits..." oninput="filterFailedTools()" style="min-width: 180px;">
+                    <select class="filter-select" id="ftStatusFilter" onchange="filterFailedTools()">
+                        <option value="all">All Toolkits</option>
+                        <option value="pending">Has Pending</option>
+                        <option value="active">Active</option>
+                        <option value="retrying">Retrying</option>
+                    </select>
+                </div>
+            </div>
+            <div class="workflow-grid" id="failedToolsGrid">
+                <div class="loading">Initializing</div>
+            </div>
+            <div class="pagination" id="failedToolsPagination" style="display: none;">
+                <button class="pagination-btn" onclick="changeFailedToolsPage(-1)" id="ftPrevBtn">&#x276E; Prev</button>
+                <span class="pagination-info">Page <span id="ftCurrentPage">1</span> of <span id="ftTotalPages">1</span></span>
+                <button class="pagination-btn" onclick="changeFailedToolsPage(1)" id="ftNextBtn">Next &#x276F;</button>
+            </div>
         </div>
     </div>
 
@@ -645,25 +1333,25 @@
     <div id="retryModal" class="modal-overlay">
         <div class="modal">
             <div class="modal-header">
-                <h2>Retry Failed Actions - <span id="modalAppName"></span></h2>
+                <h2>RETRY: <span id="modalAppName"></span></h2>
                 <button class="modal-close" onclick="closeRetryModal()">&times;</button>
             </div>
             <div class="modal-body">
-                <div class="retry-config">
-                    <label for="appNameInput">App Name (slug):</label>
-                    <input type="text" id="appNameInput" class="retry-input" placeholder="e.g. agent_mail" onchange="updateRetryAppName(this.value)">
+                <div class="modal-config">
+                    <label>App Name:</label>
+                    <input type="text" id="appNameInput" class="modal-input" placeholder="e.g. agent_mail" onchange="updateRetryAppName(this.value)">
                 </div>
-                <div class="retry-config">
-                    <label for="connectionIdInput">Connection ID:</label>
-                    <input type="text" id="connectionIdInput" class="retry-input" placeholder="ca_xxxxx" onchange="updateRetryConnectionId(this.value)">
+                <div class="modal-config">
+                    <label>Connection ID:</label>
+                    <input type="text" id="connectionIdInput" class="modal-input" placeholder="ca_xxxxx" onchange="updateRetryConnectionId(this.value)">
                 </div>
-                <div class="retry-config">
-                    <label for="linearTicketInput">Linear Ticket:</label>
-                    <input type="text" id="linearTicketInput" class="retry-input" placeholder="PAR-1234" onchange="updateRetryLinearTicket(this.value)">
+                <div class="modal-config">
+                    <label>Linear Ticket:</label>
+                    <input type="text" id="linearTicketInput" class="modal-input" placeholder="PAR-1234" onchange="updateRetryLinearTicket(this.value)">
                 </div>
-                <div class="retry-config">
-                    <label for="environmentSelect">Environment:</label>
-                    <select id="environmentSelect" class="retry-input" onchange="updateRetryEnvironment(this.value)">
+                <div class="modal-config">
+                    <label>Environment:</label>
+                    <select id="environmentSelect" class="modal-select" onchange="updateRetryEnvironment(this.value)">
                         <option value="production">Production</option>
                         <option value="staging">Staging</option>
                     </select>
@@ -678,38 +1366,34 @@
                 <div id="scriptOutput" class="script-output"></div>
             </div>
             <div class="modal-footer">
-                <button class="modal-btn secondary" onclick="closeRetryModal()">Close</button>
-                <button class="modal-btn secondary" onclick="copyScript()">Copy Script</button>
-                <button id="executeBtn" class="modal-btn primary" onclick="executeRetry()">Execute & Track</button>
+                <button class="modal-btn secondary" onclick="closeRetryModal()">Cancel</button>
+                <button class="modal-btn secondary" onclick="copyScript()">Copy</button>
+                <button id="executeBtn" class="modal-btn primary" onclick="executeRetry()">Execute</button>
             </div>
         </div>
     </div>
 
     <script>
-        // Supabase configuration - loaded from /api/config endpoint
+        // Supabase configuration
         let SUPABASE_URL = null;
         let SUPABASE_ANON_KEY = null;
         const INTEGRATOR_API_URL = 'https://integrations-api.composio.io';
 
-        // Supabase client - initialized after config loads
         let supabaseClient = null;
-
         let currentTab = window.location.hash.replace('#', '') || 'active';
         let currentRetryData = {};
         let allWorkflows = { active: [], completed: [], pending: [] };
 
-        // Pagination state
         const ITEMS_PER_PAGE = 50;
         let currentPage = 1;
         let totalPages = 1;
 
-        // Failed tools state
         let allFailedTools = [];
         let filteredFailedTools = [];
         let ftCurrentPage = 1;
         let ftTotalPages = 1;
+        let ftActiveWorkflows = {};
 
-        // Format timestamp
         function formatTime(ts) {
             if (!ts) return 'N/A';
             try {
@@ -720,10 +1404,8 @@
             }
         }
 
-        // Fetch all data from Supabase
         async function fetchData() {
             try {
-                // Fetch all workflow runs with workflow info (paginate through Supabase's 1000 row limit)
                 let allRuns = [];
                 let offset = 0;
                 const batchSize = 1000;
@@ -744,11 +1426,7 @@
                 }
 
                 const runs = allRuns;
-                const runsError = null;
 
-                if (runsError) throw runsError;
-
-                // Fetch pending queue
                 const { data: queue, error: queueError } = await supabaseClient
                     .from('queued_workflows')
                     .select('*')
@@ -756,7 +1434,6 @@
 
                 if (queueError) throw queueError;
 
-                // Fetch config
                 const { data: config } = await supabaseClient
                     .from('config')
                     .select('*')
@@ -767,7 +1444,6 @@
                     document.getElementById('maxConcurrent').value = config.value || 12;
                 }
 
-                // Group runs by workflow_id
                 const workflows = {};
                 for (const run of runs || []) {
                     const wfId = run.workflow_id;
@@ -775,7 +1451,6 @@
                     workflows[wfId].push(run);
                 }
 
-                // Separate active and completed
                 const active = [];
                 const completed = [];
 
@@ -785,23 +1460,17 @@
                     const firstRun = sortedRuns[0];
                     const hasActive = wfRuns.some(r => r.status === 'active');
 
-                    // Detect "Complete Rerun": any run after Run 1 that tests the same total count as Run 1
-                    // This means we did a full rerun, not just a retry of failed actions
                     const firstRunTotal = firstRun.total || 0;
                     let aggregationStartIndex = 0;
-                    
-                    // Find the most recent complete rerun (if any)
+
                     for (let i = sortedRuns.length - 1; i > 0; i--) {
                         const run = sortedRuns[i];
                         if (run.total === firstRunTotal && run.status === 'completed') {
-                            // This run tested the same number of actions as Run 1 - it's a complete rerun
                             aggregationStartIndex = i;
-                            console.log(`Detected complete rerun at ${wfId} run ${run.run_number} - resetting aggregation from this point`);
                             break;
                         }
                     }
 
-                    // Aggregate passed counts from the aggregation start point forward
                     const runsToAggregate = sortedRuns.slice(aggregationStartIndex);
                     const aggregatedPassed = runsToAggregate
                         .filter(r => r.status === 'completed')
@@ -831,13 +1500,11 @@
                     }
                 }
 
-                // Sort
                 active.sort((a, b) => (a.started_at || '').localeCompare(b.started_at || ''));
                 completed.sort((a, b) => (b.completed_at || '').localeCompare(a.completed_at || ''));
 
                 allWorkflows = { active, completed, pending: queue || [] };
 
-                // Update stats
                 document.getElementById('activeCount').textContent = active.length;
                 document.getElementById('pendingCount').textContent = queue?.length || 0;
                 document.getElementById('completedCount').textContent = completed.length;
@@ -846,12 +1513,21 @@
                 document.getElementById('completedTabCount').textContent = completed.length;
                 document.getElementById('lastUpdated').textContent = new Date().toISOString().slice(0, 19).replace('T', ' ') + ' UTC';
 
-                // Render cards
                 renderCards();
 
             } catch (error) {
                 console.error('Error fetching data:', error);
             }
+        }
+
+        function getStatusClass(workflow, isActive) {
+            if (isActive) return 'active';
+            const failureStates = ['FAILED', 'FAILED_AUTH_ISSUE', 'INFRA_EXECUTION_FAILED', 'INFRA_INITIATION_FAILED', 'TIMED_OUT', 'ABORTED'];
+            const state = (workflow.execution_state || '').toUpperCase();
+            if (failureStates.includes(state)) return 'failed';
+            const failedCount = Math.max(0, (workflow.total || 0) - (workflow.passed || 0));
+            if (failedCount > 0) return 'failed';
+            return 'success';
         }
 
         function generateWorkflowCard(workflow, isActive) {
@@ -873,20 +1549,17 @@
             const runs = workflow.runs || [];
             const completedAt = workflow.completed_at || workflow.started_at || '';
 
+            const statusClass = getStatusClass(workflow, isActive);
             const failureStates = ['FAILED', 'FAILED_AUTH_ISSUE', 'INFRA_EXECUTION_FAILED', 'INFRA_INITIATION_FAILED', 'TIMED_OUT', 'ABORTED'];
-            let badgeColor, statusText;
 
+            let statusText;
             if (isActive) {
-                badgeColor = '#ffc107';
                 statusText = executionState;
             } else if (failureStates.includes(executionState.toUpperCase())) {
-                badgeColor = '#dc3545';
                 statusText = executionState;
             } else if (failedCount > 0) {
-                badgeColor = '#dc3545';
                 statusText = `${failedCount} FAILED`;
             } else {
-                badgeColor = '#28a745';
                 statusText = 'SUCCESS';
             }
 
@@ -897,27 +1570,25 @@
                 : '';
 
             const prHtml = prNumber
-                ? `<a href="https://github.com/ComposioHQ/composio/pull/${prNumber}" target="_blank" class="pr-link">PR #${prNumber}</a> (${prState})`
+                ? `<a href="https://github.com/ComposioHQ/composio/pull/${prNumber}" target="_blank" class="pr-link">PR #${prNumber}</a> <span style="color:var(--text-dim)">(${prState})</span>`
                 : '';
 
             const logsLink = workflowId
-                ? `<a href="https://usefulagents.com/workflows/${workflowId}?run=${runNumber}" target="_blank" class="ua-link">View Logs</a>`
+                ? `<a href="https://usefulagents.com/workflows/${workflowId}?run=${runNumber}" target="_blank" class="ua-link">LOGS</a>`
                 : '';
 
             const retryHtml = !isActive
                 ? `<div class="retry-section">
-                    ${failedCount > 0 ? `<span class="retry-info">${failedCount} failed actions</span>` : ''}
-                    ${failedCount > 0 ? `<button class="retry-btn" onclick="showRetryModal('${appName}', '${workflowId}', '${linearTicket}', '${connectionId}', '${environment}', ${runNumber}, false)" style="margin-right: 8px;">
-                        <span>Retry Failed</span>
-                    </button>` : ''}
-                    <button class="retry-btn" onclick="showRetryModal('${appName}', '${workflowId}', '${linearTicket}', '${connectionId}', '${environment}', ${runNumber}, true)" style="background: #e67e22;">
-                        <span>Complete Rerun</span>
-                    </button>
+                    ${failedCount > 0 ? `<span class="retry-info">${failedCount} failed actions</span>` : '<span></span>'}
+                    <div style="display:flex;gap:8px;">
+                        ${failedCount > 0 ? `<button class="retry-btn" onclick="showRetryModal('${appName}', '${workflowId}', '${linearTicket}', '${connectionId}', '${environment}', ${runNumber}, false)">Retry Failed</button>` : ''}
+                        <button class="retry-btn rerun" onclick="showRetryModal('${appName}', '${workflowId}', '${linearTicket}', '${connectionId}', '${environment}', ${runNumber}, true)">Full Rerun</button>
+                    </div>
                 </div>`
                 : '';
 
             let historyHtml = '';
-            if (runs.length > 0) {
+            if (runs.length > 1) {
                 const historyRows = runs
                     .sort((a, b) => (b.run_number || 0) - (a.run_number || 0))
                     .map(r => {
@@ -925,45 +1596,47 @@
                         const rPassed = r.passed || 0;
                         const rTotal = r.total || 0;
                         const rDate = formatTime(r.started_at);
-                        const retryBadge = rNum > 1 ? '<span style="background:#e67e22;color:white;padding:2px 6px;border-radius:3px;font-size:10px;margin-left:5px">Retry</span>' : '';
+                        const retryBadge = rNum > 1 ? '<span class="history-badge">RETRY</span>' : '';
                         return `<div class="history-row">
-                            <span>Run ${rNum}${retryBadge}</span>
-                            <span>${rPassed}/${rTotal}</span>
-                            <span>${rDate}</span>
-                            <a href="https://usefulagents.com/workflows/${workflowId}?run=${rNum}" target="_blank" style="color:#4fc3f7">Logs</a>
+                            <span class="history-run">Run ${rNum}${retryBadge}</span>
+                            <span class="history-stats">${rPassed}/${rTotal}</span>
+                            <span class="history-date">${rDate}</span>
+                            <a href="https://usefulagents.com/workflows/${workflowId}?run=${rNum}" target="_blank" class="history-link">View</a>
                         </div>`;
                     }).join('');
 
-                historyHtml = `<div class="run-history" id="history-${workflowId}">
-                    <div style="font-weight:bold;margin-bottom:10px">Run History (${runs.length} runs)</div>
+                historyHtml = `<div class="history-section" id="history-${workflowId}">
+                    <div class="history-title">Run History (${runs.length})</div>
                     ${historyRows}
                 </div>`;
             }
 
-            return `<div class="run-card" data-completed="${completedAt}" data-passed="${passed}" data-total="${total}" data-app="${appName.toLowerCase()}" data-workflow="${workflowId.toLowerCase()}" data-ticket="${linearTicket.toLowerCase()}" data-state="${executionState.toLowerCase()}" data-failed="${failedCount}">
-                <div class="run-header" onclick="toggleHistory('${workflowId}')">
-                    <div class="run-title">
-                        <span class="app-name">${appName}</span>
-                        <span class="status-badge" style="background:${badgeColor}">${statusText}</span>
-                        ${runs.length > 1 ? `<span style="font-size:11px;color:#888;margin-left:10px">${runs.length} runs</span>` : ''}
+            return `<div class="workflow-card status-${statusClass}" data-completed="${completedAt}" data-passed="${passed}" data-total="${total}" data-app="${appName.toLowerCase()}" data-workflow="${workflowId.toLowerCase()}" data-ticket="${linearTicket.toLowerCase()}" data-state="${executionState.toLowerCase()}" data-failed="${failedCount}">
+                <div class="card-header" onclick="toggleHistory('${workflowId}')">
+                    <div class="card-title-row">
+                        <span class="app-name">${appName.toUpperCase()}</span>
+                        <div>
+                            <span class="status-badge ${statusClass}">${statusText}</span>
+                            ${runs.length > 1 ? `<span class="run-count">${runs.length} runs</span>` : ''}
+                        </div>
                     </div>
-                    <div class="run-meta">
+                    <div class="card-meta">
                         ${ticketHtml}
-                        <span style="font-family:monospace;font-size:11px;color:#888" title="Workflow ID">${workflowId}</span>
+                        <span class="workflow-id">${workflowId}</span>
                         <span>Run #${runNumber}</span>
-                        <span>Started: ${started}</span>
+                        <span>${started}</span>
                         ${prHtml}
                         ${logsLink}
                     </div>
                 </div>
-                <div class="run-summary">
-                    <div class="progress-bar">
-                        <div class="progress-fill" style="width:${progress.toFixed(1)}%"></div>
+                <div class="progress-section">
+                    <div class="progress-bar-container">
+                        <div class="progress-bar-fill" style="width:${progress.toFixed(1)}%"></div>
                     </div>
-                    <div class="summary-stats">
-                        <span class="stat passed">${passed} passed</span>
-                        <span class="stat failed">${failedCount} failed</span>
-                        <span class="stat">/ ${total} total</span>
+                    <div class="progress-stats">
+                        <span class="passed">${passed} PASSED</span>
+                        <span class="failed">${failedCount} FAILED</span>
+                        <span class="total">/ ${total} TOTAL</span>
                     </div>
                 </div>
                 ${retryHtml}
@@ -977,23 +1650,22 @@
             const payload = item.payload || {};
             const env = payload.env || 'production';
             const actionNames = payload.action_names || [];
-            const actionInfo = actionNames.length > 0 ? `${actionNames.length} specific actions` : 'all actions';
+            const actionInfo = actionNames.length > 0 ? `${actionNames.length} actions` : 'all actions';
 
-            return `<div class="run-card" data-app="${appName.toLowerCase()}">
-                <div class="run-header">
-                    <div class="run-title">
-                        <span class="app-name">${appName}</span>
-                        <span class="status-badge" style="background:#17a2b8">QUEUED #${position}</span>
+            return `<div class="workflow-card status-queued" data-app="${appName.toLowerCase()}">
+                <div class="card-header">
+                    <div class="card-title-row">
+                        <span class="app-name">${appName.toUpperCase()}</span>
+                        <span class="status-badge queued">QUEUE #${position}</span>
                     </div>
-                    <div class="run-meta">
-                        <span>Environment: ${env}</span>
+                    <div class="card-meta">
+                        <span>ENV: ${env}</span>
                         <span>Testing: ${actionInfo}</span>
                     </div>
                 </div>
             </div>`;
         }
 
-        // Filter and sort workflows based on current filter settings
         function getFilteredWorkflows(workflows) {
             const searchTerm = (document.getElementById('searchInput').value || '').toLowerCase().trim();
             const statusFilter = document.getElementById('statusFilter').value;
@@ -1009,13 +1681,11 @@
                 const total = workflow.total || 0;
                 const failed = Math.max(0, total - passed);
 
-                // Search filter
                 const matchesSearch = searchTerm === '' ||
                     appName.includes(searchTerm) ||
                     workflowId.includes(searchTerm) ||
                     ticket.includes(searchTerm);
 
-                // Status filter
                 let matchesStatus = true;
                 if (statusFilter === 'success') {
                     matchesStatus = state.includes('success') || (total > 0 && passed === total && failed === 0);
@@ -1032,7 +1702,6 @@
                 return matchesSearch && matchesStatus;
             });
 
-            // Sort
             filtered.sort((a, b) => {
                 const aTime = a.completed_at || a.started_at || '';
                 const bTime = b.completed_at || b.started_at || '';
@@ -1069,10 +1738,8 @@
             }
 
             if (allWorkflows.completed.length > 0) {
-                // Filter and sort BEFORE pagination
                 const filteredCompleted = getFilteredWorkflows(allWorkflows.completed);
 
-                // Calculate pagination on filtered results
                 totalPages = Math.ceil(filteredCompleted.length / ITEMS_PER_PAGE);
                 if (currentPage > totalPages) currentPage = Math.max(1, totalPages);
                 if (currentPage < 1) currentPage = 1;
@@ -1087,19 +1754,17 @@
                     completedGrid.innerHTML = '<div class="empty-state">No matching workflows</div>';
                 }
 
-                // Update pagination controls
                 document.getElementById('currentPage').textContent = currentPage;
                 document.getElementById('totalPages').textContent = totalPages;
                 document.getElementById('prevPageBtn').disabled = currentPage <= 1;
                 document.getElementById('nextPageBtn').disabled = currentPage >= totalPages;
                 document.getElementById('completedPagination').style.display = totalPages > 1 ? 'flex' : 'none';
 
-                // Update search count
                 const searchTerm = document.getElementById('searchInput').value.trim();
                 const statusFilter = document.getElementById('statusFilter').value;
                 const countSpan = document.getElementById('searchCount');
                 if (searchTerm || statusFilter !== 'all') {
-                    countSpan.textContent = `Showing ${filteredCompleted.length} of ${allWorkflows.completed.length}`;
+                    countSpan.textContent = `${filteredCompleted.length} / ${allWorkflows.completed.length}`;
                 } else {
                     countSpan.textContent = '';
                 }
@@ -1114,20 +1779,14 @@
                 pendingGrid.innerHTML = '<div class="empty-state">Queue is empty</div>';
             }
 
-            // Apply filters for active/pending tabs (completed is already filtered above)
             if (currentTab !== 'completed') {
                 applyFiltersForActiveTab();
             }
         }
 
-        // ==================== FAILED TOOLS FUNCTIONS ====================
-
-        // Store active workflows by toolkit for cross-reference
-        let ftActiveWorkflows = {};
-
+        // Failed Tools Functions
         async function fetchFailedTools() {
             try {
-                // Fetch failed tools
                 const { data: tools, error } = await supabaseClient
                     .from('failed_tools')
                     .select('*')
@@ -1135,13 +1794,11 @@
 
                 if (error) throw error;
 
-                // Also fetch active workflows to cross-reference
                 const { data: activeRuns } = await supabaseClient
                     .from('workflow_runs')
                     .select('*, workflows(app_name, linear_ticket, connection_id)')
                     .eq('status', 'active');
 
-                // Build map of active workflows by toolkit
                 ftActiveWorkflows = {};
                 for (const run of activeRuns || []) {
                     const appName = run.workflows?.app_name;
@@ -1151,7 +1808,6 @@
                     }
                 }
 
-                // Group failed tools by toolkit
                 const byToolkit = {};
                 for (const t of tools || []) {
                     if (!byToolkit[t.toolkit]) {
@@ -1173,7 +1829,6 @@
 
                 allFailedTools = Object.values(byToolkit).sort((a, b) => b.pending - a.pending);
 
-                // Update stats
                 let totalPending = 0, totalRetrying = 0, totalCompleted = 0;
                 for (const tk of allFailedTools) {
                     totalPending += tk.pending;
@@ -1182,6 +1837,7 @@
                 }
 
                 document.getElementById('failedToolsTabCount').textContent = allFailedTools.length;
+                document.getElementById('failedToolsCount').textContent = totalPending;
                 document.getElementById('ftPendingCount').textContent = totalPending;
                 document.getElementById('ftRetryingCount').textContent = totalRetrying;
                 document.getElementById('ftCompletedCount').textContent = totalCompleted;
@@ -1225,7 +1881,6 @@
 
             grid.innerHTML = pageTools.map(tk => generateFailedToolCard(tk)).join('');
 
-            // Pagination
             const pagination = document.getElementById('failedToolsPagination');
             pagination.style.display = ftTotalPages > 1 ? 'flex' : 'none';
             document.getElementById('ftCurrentPage').textContent = ftCurrentPage;
@@ -1242,94 +1897,87 @@
             const retryingCount = tk.retrying;
             const progress = totalActions > 0 ? (completedCount / totalActions * 100) : 0;
 
-            // Check if there's an active workflow for this toolkit
             const activeWf = tk.activeWorkflow;
             const isActive = !!activeWf;
 
-            // Determine badge
-            let badgeColor, badgeText;
+            let statusClass, statusText;
             if (isActive) {
-                badgeColor = '#ffc107';
-                badgeText = activeWf.execution_state || 'RUNNING';
+                statusClass = 'active';
+                statusText = activeWf.execution_state || 'RUNNING';
             } else if (pendingCount === 0 && completedCount === totalActions) {
-                badgeColor = '#28a745';
-                badgeText = 'ALL FIXED';
+                statusClass = 'success';
+                statusText = 'ALL FIXED';
             } else if (pendingCount > 0) {
-                badgeColor = '#dc3545';
-                badgeText = `${pendingCount} PENDING`;
+                statusClass = 'failed';
+                statusText = `${pendingCount} PENDING`;
             } else {
-                badgeColor = '#6c757d';
-                badgeText = 'SKIPPED';
+                statusClass = 'queued';
+                statusText = 'SKIPPED';
             }
 
-            // Linear ticket link
             const ticketHtml = tk.linear_ticket && tk.linear_ticket !== 'N/A'
-                ? `<a href="https://linear.app/composio/issue/${tk.linear_ticket}" target="_blank" style="color: #17a2b8;">[${tk.linear_ticket}]</a>`
+                ? `<a href="https://linear.app/composio/issue/${tk.linear_ticket}" target="_blank">[${tk.linear_ticket}]</a>`
                 : '';
 
-            // Active workflow link
             const activeLink = isActive
-                ? `<a href="https://usefulagents.com/workflows/${activeWf.workflow_id}?run=${activeWf.run_number}" target="_blank" class="ua-link">View Active Run</a>`
+                ? `<a href="https://usefulagents.com/workflows/${activeWf.workflow_id}?run=${activeWf.run_number}" target="_blank" class="ua-link">ACTIVE RUN</a>`
                 : '';
 
-            // Build expandable action list
             const actionsHtml = tk.actions.map(a => {
                 const statusColor = {
-                    'pending': '#ffc107',
-                    'retrying': '#17a2b8',
-                    'completed': '#28a745',
-                    'skipped': '#6c757d'
-                }[a.status] || '#888';
-                const reasonPreview = a.llm_reason ? a.llm_reason.substring(0, 100) + '...' : '';
+                    'pending': 'var(--accent-amber)',
+                    'retrying': 'var(--accent-cyan)',
+                    'completed': 'var(--accent-green)',
+                    'skipped': 'var(--text-dim)'
+                }[a.status] || 'var(--text-dim)';
+                const reasonPreview = a.llm_reason ? a.llm_reason.substring(0, 80) + '...' : '';
                 return `
-                    <div class="action-item" style="background: #0f0f1a; margin-bottom: 4px; border-radius: 4px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <span class="action-name" style="font-size: 11px;">${a.action_name}</span>
-                            <span style="color: ${statusColor}; font-size: 10px; padding: 2px 6px; background: ${statusColor}20; border-radius: 3px;">${a.status}</span>
+                    <div class="action-item" style="flex-direction: column; align-items: flex-start; gap: 4px;">
+                        <div style="display: flex; justify-content: space-between; width: 100%; align-items: center;">
+                            <span class="action-name">${a.action_name}</span>
+                            <span style="color: ${statusColor}; font-size: 9px; padding: 2px 8px; background: rgba(255,255,255,0.05);">${a.status.toUpperCase()}</span>
                         </div>
-                        ${reasonPreview ? `<div style="font-size: 10px; color: #666; margin-top: 4px; font-style: italic;">${reasonPreview}</div>` : ''}
+                        ${reasonPreview ? `<div style="font-size: 9px; color: var(--text-dim); font-style: italic;">${reasonPreview}</div>` : ''}
                     </div>
                 `;
             }).join('');
 
             return `
-                <div class="run-card">
-                    <div class="run-header" onclick="toggleFailedToolActions('${tk.toolkit}')">
-                        <div class="run-title">
-                            <span class="app-name">${tk.toolkit}</span>
-                            <span class="status-badge" style="background: ${badgeColor};">${badgeText}</span>
+                <div class="workflow-card status-${statusClass}">
+                    <div class="card-header" onclick="toggleFailedToolActions('${tk.toolkit}')">
+                        <div class="card-title-row">
+                            <span class="app-name">${tk.toolkit.toUpperCase()}</span>
+                            <span class="status-badge ${statusClass}">${statusText}</span>
                         </div>
-                        <div class="run-meta">
+                        <div class="card-meta">
                             ${ticketHtml}
                             <span>${totalActions} actions</span>
                             ${activeLink}
                         </div>
                     </div>
-                    <div class="run-summary">
-                        <div class="progress-bar">
-                            <div class="progress-fill" style="width: ${progress}%;"></div>
+                    <div class="progress-section">
+                        <div class="progress-bar-container">
+                            <div class="progress-bar-fill" style="width: ${progress}%;"></div>
                         </div>
-                        <div class="summary-stats">
-                            <span class="stat passed">${completedCount} fixed</span>
-                            <span class="stat failed">${pendingCount} pending</span>
-                            ${retryingCount > 0 ? `<span class="stat" style="color: #17a2b8;">${retryingCount} retrying</span>` : ''}
-                            <span class="stat">/ ${totalActions} total</span>
+                        <div class="progress-stats">
+                            <span class="passed">${completedCount} FIXED</span>
+                            <span class="failed">${pendingCount} PENDING</span>
+                            ${retryingCount > 0 ? `<span style="color: var(--accent-cyan);">${retryingCount} RETRYING</span>` : ''}
+                            <span class="total">/ ${totalActions} TOTAL</span>
                         </div>
                     </div>
-                    <div id="ft-actions-${tk.toolkit}" style="display: none; padding: 15px; border-top: 1px solid #333; background: #1a1a2e; max-height: 300px; overflow-y: auto;">
+                    <div id="ft-actions-${tk.toolkit}" class="history-section" style="max-height: 250px;">
                         ${actionsHtml}
                     </div>
                     ${hasConnection && pendingCount > 0 && !isActive ? `
                         <div class="retry-section">
                             <span class="retry-info">${pendingCount} actions need retry</span>
-                            <button class="retry-btn" onclick="showFailedToolsRetryModal('${tk.toolkit}')">
-                                Retry Failed
-                            </button>
+                            <button class="retry-btn" onclick="showFailedToolsRetryModal('${tk.toolkit}')">Retry Failed</button>
                         </div>
                     ` : ''}
                     ${!hasConnection ? `
-                        <div style="padding: 10px 15px; border-top: 1px solid #333; color: #dc3545; font-size: 12px;">
-                            No connection available for this toolkit
+                        <div style="padding: 12px 16px; border-top: 1px solid var(--border-dim); color: var(--accent-pink); font-size: 10px; text-transform: uppercase; letter-spacing: 1px;">
+                            No connection available
                         </div>
                     ` : ''}
                 </div>
@@ -1339,7 +1987,7 @@
         function toggleFailedToolActions(toolkit) {
             const el = document.getElementById(`ft-actions-${toolkit}`);
             if (el) {
-                el.style.display = el.style.display === 'none' ? 'block' : 'none';
+                el.classList.toggle('expanded');
             }
         }
 
@@ -1348,7 +1996,6 @@
             renderFailedTools();
         }
 
-        // Show retry modal with editable action list (reuses main modal)
         function showFailedToolsRetryModal(toolkit) {
             const tk = allFailedTools.find(t => t.toolkit === toolkit);
             if (!tk) return;
@@ -1362,40 +2009,34 @@
                 return;
             }
 
-            // Use the existing retry modal
             currentRetryData = {
                 app_name: tk.toolkit,
-                workflow_id: `ft_${tk.toolkit}_${Date.now()}`, // Generate a pseudo workflow_id
+                workflow_id: `ft_${tk.toolkit}_${Date.now()}`,
                 connection_id: tk.connection_id,
                 linear_ticket: tk.linear_ticket || '',
                 environment: 'production',
                 failed_actions: [...pendingActions],
-                isFailedTools: true // Flag to indicate this is from Failed Tools
+                isFailedTools: true
             };
 
-            document.getElementById('modalAppName').textContent = tk.toolkit;
+            document.getElementById('modalAppName').textContent = tk.toolkit.toUpperCase();
             document.getElementById('appNameInput').value = tk.toolkit;
             document.getElementById('connectionIdInput').value = tk.connection_id || '';
             document.getElementById('linearTicketInput').value = tk.linear_ticket || '';
             document.getElementById('environmentSelect').value = 'production';
 
-            // Show action editor
             const actionsEditor = document.getElementById('actionsEditor');
             actionsEditor.style.display = 'block';
             renderActionsEditor();
-
-            // Update script
             updateRetryScript();
 
             document.getElementById('retryModal').classList.add('active');
         }
 
-        // ==================== END FAILED TOOLS ====================
-
         function toggleHistory(workflowId) {
             const history = document.getElementById(`history-${workflowId}`);
             if (history) {
-                history.style.display = history.style.display === 'none' || history.style.display === '' ? 'block' : 'none';
+                history.classList.toggle('expanded');
             }
         }
 
@@ -1404,7 +2045,7 @@
             window.location.hash = tabName;
 
             document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
-            document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
 
             document.getElementById(tabName).classList.add('active');
             document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
@@ -1417,31 +2058,26 @@
             if (newPage >= 1 && newPage <= totalPages) {
                 currentPage = newPage;
                 renderCards();
-                // Scroll to top of completed section
                 document.getElementById('completedGrid').scrollIntoView({ behavior: 'smooth' });
             }
         }
 
-        // Main filter function - handles completed tab specially (re-renders with filter)
         function applyFilters() {
             if (currentTab === 'completed') {
-                // For completed tab: reset to page 1 and re-render with filters
                 currentPage = 1;
                 renderCards();
             } else {
-                // For active/pending tabs: use DOM-based filtering
                 applyFiltersForActiveTab();
             }
         }
 
-        // DOM-based filtering for active/pending tabs
         function applyFiltersForActiveTab() {
             const searchTerm = (document.getElementById('searchInput').value || '').toLowerCase().trim();
             const statusFilter = document.getElementById('statusFilter').value;
             const sortFilter = document.getElementById('sortFilter').value;
 
             const activeTabContent = document.querySelector('.tab-content.active');
-            const allCards = activeTabContent ? activeTabContent.querySelectorAll('.run-card') : [];
+            const allCards = activeTabContent ? activeTabContent.querySelectorAll('.workflow-card') : [];
 
             let visibleCount = 0;
             let totalCount = 0;
@@ -1459,13 +2095,11 @@
                 const completedTime = card.dataset.completed || '';
                 const passRate = total > 0 ? (passed / total) : 0;
 
-                // Search filter
                 let matchesSearch = searchTerm === '' ||
                     appName.includes(searchTerm) ||
                     workflowId.includes(searchTerm) ||
                     ticket.includes(searchTerm);
 
-                // Status filter
                 let matchesStatus = true;
                 if (statusFilter === 'success') {
                     matchesStatus = state.includes('success') || (total > 0 && passed === total && failed === 0);
@@ -1488,9 +2122,8 @@
                 }
             });
 
-            // Sort cards
             if (cardsToSort.length > 1) {
-                const grid = activeTabContent?.querySelector('.runs-grid');
+                const grid = activeTabContent?.querySelector('.workflow-grid');
                 if (grid) {
                     cardsToSort.sort((a, b) => {
                         switch (sortFilter) {
@@ -1509,54 +2142,47 @@
 
             const countSpan = document.getElementById('searchCount');
             if (searchTerm || statusFilter !== 'all') {
-                countSpan.textContent = `Showing ${visibleCount} of ${totalCount}`;
+                countSpan.textContent = `${visibleCount} / ${totalCount}`;
             } else {
                 countSpan.textContent = '';
             }
         }
 
-        // Retry modal functions
+        // Retry Modal Functions
         async function showRetryModal(appName, workflowId, linearTicket, connectionId, environment, runNumber, completeRerun = false) {
-            const modalTitle = completeRerun ? `Complete Rerun - ${appName}` : `Retry Failed Actions - ${appName}`;
-            document.getElementById('modalAppName').textContent = appName;
-            document.querySelector('.modal-header h2').textContent = modalTitle;
-            document.getElementById('scriptOutput').innerHTML = '<div class="loading">Loading...</div>';
+            const modalTitle = completeRerun ? `FULL RERUN: ${appName.toUpperCase()}` : `RETRY FAILED: ${appName.toUpperCase()}`;
+            document.getElementById('modalAppName').textContent = appName.toUpperCase();
+            document.querySelector('.modal-header h2').innerHTML = modalTitle;
+            document.getElementById('scriptOutput').innerHTML = '<div class="loading">Loading</div>';
             document.getElementById('appNameInput').value = appName || '';
             document.getElementById('connectionIdInput').value = connectionId || '';
             document.getElementById('linearTicketInput').value = linearTicket || '';
-            
-            // Normalize and set environment (default to production)
+
             const normalizedEnv = environment === 'prod' ? 'production' : (environment || 'production');
             document.getElementById('environmentSelect').value = normalizedEnv;
-            
-            // Reset execute button state
+
             const executeBtn = document.getElementById('executeBtn');
             executeBtn.disabled = false;
-            executeBtn.textContent = 'Execute & Track';
+            executeBtn.textContent = 'Execute';
             executeBtn.onclick = executeRetry;
-            
+
             document.getElementById('retryModal').classList.add('active');
 
-            // Create fresh retry data object
-            currentRetryData = { 
-                app_name: appName, 
-                workflow_id: workflowId, 
-                linear_ticket: linearTicket, 
-                connection_id: connectionId, 
-                environment: normalizedEnv, 
+            currentRetryData = {
+                app_name: appName,
+                workflow_id: workflowId,
+                linear_ticket: linearTicket,
+                connection_id: connectionId,
+                environment: normalizedEnv,
                 run_number: runNumber,
                 complete_rerun: completeRerun,
-                failed_actions: [] // Initialize empty
+                failed_actions: []
             };
 
             if (completeRerun) {
-                // Complete rerun - don't pass any actions (already initialized as [])
-                console.log('Complete rerun mode - no action_names will be sent');
                 renderActionsList();
                 updateScriptOutput();
             } else {
-                // Get failed actions from Integrator API via backend proxy (to avoid CORS)
-                console.log('Retry failed mode - fetching failed actions from Integrator API');
                 try {
                     const response = await fetch('/api/get-failed-actions.js', {
                         method: 'POST',
@@ -1574,8 +2200,7 @@
 
                     const data = await response.json();
                     const failedActions = data.failed_actions || [];
-                    console.log('API returned failed actions:', failedActions);
-                    
+
                     if (!failedActions.length) {
                         document.getElementById('scriptOutput').textContent = 'No failed actions found';
                         return;
@@ -1586,7 +2211,7 @@
                     updateScriptOutput();
                 } catch (error) {
                     console.error('Error fetching failed actions:', error);
-                    document.getElementById('scriptOutput').innerHTML = `<span style="color:#dc3545">Error loading failed actions: ${error.message}</span>`;
+                    document.getElementById('scriptOutput').innerHTML = `<span style="color:var(--accent-pink)">Error: ${error.message}</span>`;
                     return;
                 }
             }
@@ -1627,22 +2252,25 @@
             countSpan.textContent = `${actions.length} action${actions.length !== 1 ? 's' : ''}`;
 
             if (actions.length === 0) {
-                list.innerHTML = '<div class="actions-empty">No actions to retry</div>';
+                list.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-dim); font-size: 11px;">No actions to retry</div>';
                 return;
             }
 
             list.innerHTML = actions.map((action, index) => `
                 <div class="action-item">
                     <span class="action-name">${action}</span>
-                    <button class="action-remove" onclick="removeAction(${index})" title="Remove this action">✕</button>
+                    <button class="action-remove" onclick="removeAction(${index})">X</button>
                 </div>
             `).join('');
         }
 
+        function renderActionsEditor() {
+            renderActionsList();
+        }
+
         function removeAction(index) {
             if (currentRetryData.failed_actions && index >= 0 && index < currentRetryData.failed_actions.length) {
-                const removed = currentRetryData.failed_actions.splice(index, 1);
-                console.log('Removed action:', removed[0]);
+                currentRetryData.failed_actions.splice(index, 1);
                 renderActionsList();
                 updateScriptOutput();
             }
@@ -1651,7 +2279,6 @@
         function updateScriptOutput() {
             const { app_name, workflow_id, linear_ticket, connection_id, environment, failed_actions, complete_rerun } = currentRetryData;
 
-            // Normalize environment: 'prod' -> 'production', default to 'production'
             const normalizedEnv = environment === 'prod' ? 'production' : (environment || 'production');
 
             const payload = {
@@ -1665,10 +2292,9 @@
                 app_name: app_name,
                 base_branch: 'master',
                 connection_id: connection_id,
-                test_instruction: "Test thoroughly and ensure: (1) tool/parameter descriptions are clear and accurate, not sloppy or vague, (2) correct API endpoints are used, (3) response schemas are complete and useful, (4) the tool is well-built for agent use with sensible defaults."
+                test_instruction: "Test thoroughly and ensure: (1) tool/parameter descriptions are clear and accurate, (2) correct API endpoints are used, (3) response schemas are complete, (4) the tool is well-built for agent use."
             };
 
-            // Only add action_names if not a complete rerun
             if (!complete_rerun && failed_actions?.length) {
                 payload.action_names = failed_actions;
             }
@@ -1680,13 +2306,22 @@
             document.getElementById('scriptOutput').textContent = script;
         }
 
+        function updateRetryScript() {
+            updateScriptOutput();
+        }
+
         function closeRetryModal() {
             document.getElementById('retryModal').classList.remove('active');
         }
 
         function copyScript() {
             const scriptText = document.getElementById('scriptOutput').textContent;
-            navigator.clipboard.writeText(scriptText).then(() => alert('Script copied!'));
+            navigator.clipboard.writeText(scriptText).then(() => {
+                const btn = document.querySelector('.modal-btn.secondary:nth-child(2)');
+                const original = btn.textContent;
+                btn.textContent = 'Copied!';
+                setTimeout(() => btn.textContent = original, 1500);
+            });
         }
 
         async function executeRetry() {
@@ -1696,46 +2331,38 @@
             btn.textContent = 'Executing...';
 
             try {
-                console.log('Sending retry request:', currentRetryData);
                 const response = await fetch('/api/retry.js', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(currentRetryData)
                 });
                 const data = await response.json();
-                console.log('Retry response:', data);
 
                 if (data.error) {
-                    let errorMsg = `<span style="color:#dc3545">ERROR: ${data.error}</span>`;
-                    if (data.details) {
-                        errorMsg += `\n\nDetails: ${data.details}`;
-                    }
-                    if (data.api_response) {
-                        errorMsg += `\n\nAPI Response: ${JSON.stringify(data.api_response, null, 2)}`;
-                    }
-                    scriptOutput.innerHTML = errorMsg;
+                    let errorMsg = `ERROR: ${data.error}`;
+                    if (data.details) errorMsg += `\n\nDetails: ${data.details}`;
+                    if (data.api_response) errorMsg += `\n\nAPI Response: ${JSON.stringify(data.api_response, null, 2)}`;
+                    scriptOutput.innerHTML = `<span style="color:var(--accent-pink)">${errorMsg}</span>`;
                     btn.disabled = false;
-                    btn.textContent = 'Execute & Track';
+                    btn.textContent = 'Execute';
                 } else {
-                    const rerunType = data.complete_rerun ? 'Complete Rerun' : 'Failed Actions Retry';
-                    scriptOutput.innerHTML = `<span style="color:#28a745">✅ SUCCESS! ${rerunType}</span>\n\nWorkflow ID: ${data.workflow_id}\nRun Number: ${data.run_number}\nActions to retry: ${data.actions_count}\n\nRefreshing dashboard in 2 seconds...`;
+                    const rerunType = data.complete_rerun ? 'Full Rerun' : 'Failed Retry';
+                    scriptOutput.innerHTML = `<span style="color:var(--accent-green)">SUCCESS: ${rerunType}</span>\n\nWorkflow ID: ${data.workflow_id}\nRun Number: ${data.run_number}\nActions: ${data.actions_count}\n\nRefreshing in 2s...`;
                     btn.disabled = true;
-                    btn.textContent = 'Success - Refreshing...';
-                    // Auto-refresh after 2 seconds
+                    btn.textContent = 'Success';
                     setTimeout(() => window.location.reload(), 2000);
                 }
             } catch (e) {
-                console.error('Retry error:', e);
-                scriptOutput.innerHTML = `<span style="color:#dc3545">ERROR: ${e.message}</span>`;
+                scriptOutput.innerHTML = `<span style="color:var(--accent-pink)">ERROR: ${e.message}</span>`;
                 btn.disabled = false;
-                btn.textContent = 'Execute & Track';
+                btn.textContent = 'Execute';
             }
         }
 
         async function updateMaxConcurrent() {
             const value = parseInt(document.getElementById('maxConcurrent').value);
             if (isNaN(value) || value < 1 || value > 20) {
-                alert('Please enter a number between 1 and 20');
+                alert('Enter a number between 1 and 20');
                 return;
             }
 
@@ -1746,7 +2373,10 @@
             if (error) {
                 alert('Error: ' + error.message);
             } else {
-                alert('Max concurrent updated to ' + value);
+                const btn = document.querySelector('.config-btn');
+                const original = btn.textContent;
+                btn.textContent = 'Done!';
+                setTimeout(() => btn.textContent = original, 1500);
             }
         }
 
@@ -1763,7 +2393,7 @@
             if (e.target.classList.contains('modal-overlay')) closeRetryModal();
         });
 
-        // Load config and initialize
+        // Initialize
         async function init() {
             try {
                 const configResp = await fetch('/api/config.js');
@@ -1771,14 +2401,13 @@
                 SUPABASE_URL = config.supabaseUrl;
                 SUPABASE_ANON_KEY = config.supabaseAnonKey;
 
-                // Initialize Supabase client with loaded config
                 supabaseClient = window.supabase.createClient(
                     config.supabaseUrl,
                     config.supabaseAnonKey
                 );
             } catch (e) {
                 console.error('Failed to load config:', e);
-                document.body.innerHTML = '<div style="color:red;padding:40px;text-align:center">Failed to load configuration. Please check environment variables.</div>';
+                document.body.innerHTML = '<div style="color:var(--accent-pink);padding:60px;text-align:center;font-family:JetBrains Mono,monospace;font-size:14px;text-transform:uppercase;letter-spacing:2px;">Configuration Error</div>';
                 return;
             }
 
@@ -1789,11 +2418,10 @@
             fetchFailedTools();
         }
 
-        // Initial load and auto-refresh
         document.addEventListener('DOMContentLoaded', init);
 
         setInterval(fetchData, 10000);
-        setInterval(fetchFailedTools, 30000); // Refresh failed tools every 30s
+        setInterval(fetchFailedTools, 30000);
     </script>
 </body>
 </html>
